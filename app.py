@@ -15,7 +15,11 @@ def format_unit(unit, count, force_to_pkg=False):
 
 def format_number(value, digits=3):
     value = round(value, digits)
-    return f"{value:,.{digits}f}" if value != int(value) else f"{int(value):,}"
+    if value == int(value):
+        return f"{int(value):,}"
+    else:
+        formatted = f"{value:,.{digits}f}"
+        return formatted.rstrip('0').rstrip('.') if '.' in formatted else formatted
 
 
 st.title("🚢 화물 정보 자동 정리기 - 화물관리기T1")
