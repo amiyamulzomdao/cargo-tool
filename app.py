@@ -1,76 +1,96 @@
 import streamlit as st
 import pandas as pd
 
-def format_unit(unit, count):
+
+def format_unit(unit, count, force_to_pkg=False):
     unit_map = {'PK': 'PKG', 'PL': 'PLT', 'CT': 'CTN'}
-    base = unit_map.get(unit.upper(), unit.upper())
-    if unit.upper() in unit_map and count > 1:
+    if force_to_pkg and unit.upper() == 'PL':
+        base = 'PKG'
+    else:
+        base = unit_map.get(unit.upper(), unit.upper())
+    if unit.upper() in ['PK', 'PL', 'CT'] and count > 1:
         return base + 'S'
     return base
 
-def remove_trailing_zero(value):
-    if value == int(value):
-        return str(int(value))
-    return str(value)
 
-st.title("🚢 화물 정보 자동 정리기")
-st.markdown("엑셀 파일을 업로드하면 메모장에 붙여넣을 형식으로 자동 정리해드립니다.")
+def format_number(value, digits=3):
+    value = round(value, digits)
+    return f"{value:,.{digits}f}" if value != int(value) else f"{int(value):,}"
+
+
+st.title("🚢 화물 정보 자동 정리기 - 화물관리기T1")
+st.markdown("엑셀 파일을 업로드하면 컨테이너별 마크 및 디스크립션을 정리해드립니다.")
+
+force_to_pkg = st.checkbox("코스코 PLT변환")
 
 uploaded_file = st.file_uploader("엑셀 파일 업로드", type=["xlsx"])
 
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
 
-    # 필요한 열만 추출
+    # 필요한 열 추출 및 정리
     df = df[['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']].copy()
+    df['Seal#1'] = df['Seal#1'].fillna('').apply(lambda x: str(x).split('.')[0])
 
-    # 총합 계산을 위해 컨테이너+씰 단위로 그룹
-    container_totals = df.groupby(['컨테이너 번호', 'Seal#1']).agg({
+    # 컨+씰 기준으로 전체 합산
+    total_summary = df.groupby(['컨테이너 번호', 'Seal#1']).agg({
         '포장갯수': 'sum',
         'Weight': 'sum',
         'Measure': 'sum'
     }).reset_index()
 
-    # HBL 단위 정리
-    df_grouped = df.groupby(['컨테이너 번호', 'Seal#1', 'House B/L No']).agg({
+    # 마크 정리용 (컨+씰별로 HBL 리스트)
+    marks = df.groupby(['컨테이너 번호', 'Seal#1'])['House B/L No'].unique().reset_index()
+
+    # 디스크립션 정리용 (컨+씰+HBL별로 나누기)
+    desc = df.groupby(['컨테이너 번호', 'Seal#1', 'House B/L No']).agg({
         '포장갯수': 'sum',
         '단위': 'first',
         'Weight': 'sum',
         'Measure': 'sum'
     }).reset_index()
 
-    # 컨테이너/씰별 TOTAL 먼저 출력
-    total_summary_lines = []
-    for _, row in container_totals.iterrows():
+    # 총합 출력
+    summary_lines = []
+    for _, row in total_summary.iterrows():
         container = row['컨테이너 번호']
-        seal = str(row['Seal#1']).split('.')[0] if not pd.isna(row['Seal#1']) else ''
-        total_pkgs = int(row['포장갯수'])
-        total_weight = remove_trailing_zero(round(row['Weight'], 2))
-        total_measure = remove_trailing_zero(round(row['Measure'], 3))
-        total_summary_lines.append(f"{container} / {seal}\nTOTAL: {total_pkgs} PKGS / {total_weight} KGS / {total_measure} CBM\n")
+        seal = row['Seal#1']
+        pkgs = int(row['포장갯수'])
+        weight = format_number(row['Weight'])
+        measure = format_number(row['Measure'])
+        summary_lines.append(f"{container} / {seal}\nTOTAL: {pkgs} PKGS / {weight} KG / {measure} CBM\n")
 
-    # 결과 조립
-    output_lines = []
-    current_container = None
-    for _, row in df_grouped.iterrows():
+    # MARK 출력
+    mark_lines = ["<MARK>\n"]
+    for _, row in marks.iterrows():
         container = row['컨테이너 번호']
-        seal = str(row['Seal#1']).split('.')[0] if not pd.isna(row['Seal#1']) else ''
+        seal = row['Seal#1']
+        hbls = row['House B/L No']
+        mark_lines.append(f"{container} / {seal}\n")
+        mark_lines.extend(hbls)
+        mark_lines.append("")
+
+    # DESC 출력
+    desc_lines = ["<DESC>\n"]
+    prev_container = None
+    prev_seal = None
+    for _, row in desc.iterrows():
+        container = row['컨테이너 번호']
+        seal = row['Seal#1']
         hbl = row['House B/L No']
-        count = int(row['포장갯수'])
-        unit = format_unit(row['단위'], count)
-        weight = remove_trailing_zero(round(row['Weight'], 2))
-        measure = remove_trailing_zero(round(row['Measure'], 3))
+        pkgs = int(row['포장갯수'])
+        unit = format_unit(row['단위'], pkgs, force_to_pkg=force_to_pkg)
+        weight = format_number(row['Weight'])
+        measure = format_number(row['Measure'])
 
-        if container != current_container:
-            if current_container is not None:
-                output_lines.append("")  # 컨테이너 구분을 위한 빈 줄
-            output_lines.append(f"{container} / {seal}\n")
-            current_container = container
+        if (container != prev_container) or (seal != prev_seal):
+            desc_lines.append(f"{container} / {seal}\n")
+            prev_container, prev_seal = container, seal
 
-        output_lines.append(f"{hbl}\n{count} {unit} / {weight} KGS / {measure} CBM\n")
+        desc_lines.append(f"{hbl}\n{pkgs} {unit} / {weight} KGS / {measure} CBM\n")
 
-    # 최종 결과 정리
-    result_text = "\n".join(total_summary_lines + [""] + output_lines)
-    st.text_area("📋 복사해서 메모장에 붙여넣으세요:", result_text, height=400)
+    # 최종 결과 조립
+    result_text = "\n".join(summary_lines + [""] + mark_lines + [""] + desc_lines)
 
-    st.download_button("결과 텍스트 다운로드", result_text, file_name="cargo_output.txt")
+    st.text_area("📋 결과 출력:", result_text, height=600)
+    st.download_button("결과 텍스트 다운로드", result_text, file_name="cargo_mark_desc.txt")
