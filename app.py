@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import os  # 파일명 추출용
 
 
 def format_unit(unit, count, force_to_pkg=False):
@@ -95,5 +96,8 @@ if uploaded_file:
     # 최종 결과 조립
     result_text = "\n".join(summary_lines + [""] + mark_lines + [""] + desc_lines)
 
+    # 파일명 자동 설정
+    file_name = os.path.splitext(uploaded_file.name)[0] + ".txt"
+
     st.text_area("📋 결과 출력:", result_text, height=600)
-    st.download_button("결과 텍스트 다운로드", result_text, file_name="cargo_mark_desc.txt")
+    st.download_button("결과 텍스트 다운로드", result_text, file_name=file_name)
