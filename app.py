@@ -54,6 +54,8 @@ if uploaded_file:
         'Measure': 'sum'
     }).reset_index()
 
+    is_single_container = total_summary.shape[0] == 1
+
     # 총합 출력
     summary_lines = []
     for _, row in total_summary.iterrows():
@@ -70,7 +72,8 @@ if uploaded_file:
         container = row['컨테이너 번호']
         seal = row['Seal#1']
         hbls = row['House B/L No']
-        mark_lines.append(f"{container} / {seal}\n")
+        if not is_single_container:
+            mark_lines.append(f"{container} / {seal}\n")
         mark_lines.extend(hbls)
         mark_lines.append("")
 
@@ -87,7 +90,7 @@ if uploaded_file:
         weight = format_number(row['Weight'])
         measure = format_number(row['Measure'])
 
-        if (container != prev_container) or (seal != prev_seal):
+        if not is_single_container and ((container != prev_container) or (seal != prev_seal)):
             desc_lines.append(f"{container} / {seal}\n")
             prev_container, prev_seal = container, seal
 
