@@ -22,7 +22,7 @@ def format_number(value):
     return text  # 쉼표 제거된 숫자 반환
 
 
-st.title("🚢 화물 정보 자동 정리기 - 화물관리기T1")
+st.title("🚢 SR 제출 자동 정리기")
 st.markdown("엑셀 파일을 업로드하면 컨테이너별 마크 및 디스크립션을 정리해드립니다.")
 
 force_to_pkg = st.checkbox("코스코 PLT변환")
