@@ -13,13 +13,12 @@ def format_unit(unit, count, force_to_pkg=False):
     return base
 
 
-def format_number(value, digits=3):
-    value = round(value, digits)
-    if value == int(value):
-        return f"{int(value):,}"
-    else:
-        formatted = f"{value:,.{digits}f}"
-        return formatted.rstrip('0').rstrip('.') if '.' in formatted else formatted
+def format_number(value):
+    value = round(value, 3)
+    text = f"{value:.3f}"  # 항상 소수점 셋째자리까지 만들고
+    if '.' in text:
+        text = text.rstrip('0').rstrip('.')  # 0과 . 제거
+    return f"{text:,}"  # 천 단위 쉼표 추가
 
 
 st.title("🚢 화물 정보 자동 정리기 - 화물관리기T1")
