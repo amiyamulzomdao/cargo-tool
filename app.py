@@ -18,7 +18,7 @@ def format_number(value):
     text = f"{value:.3f}"  # 항상 소수점 셋째자리까지 만들고
     if '.' in text:
         text = text.rstrip('0').rstrip('.')  # 0과 . 제거
-    return f"{text:,}"  # 천 단위 쉼표 추가
+    return text  # 쉼표 제거된 숫자 반환
 
 
 st.title("🚢 화물 정보 자동 정리기 - 화물관리기T1")
