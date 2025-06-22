@@ -42,7 +42,7 @@ def log_uploaded_filename(file_name):
 st.title("🚢 SR 제출 자동 정리기")
 st.markdown("엑셀 파일을 업로드하면 컨테이너별 마크 및 디스크립션을 정리해드립니다.")
 
-force_to_pkg = st.checkbox("코스코 PLT변환")
+force_to_pkg = st.checkbox("코스코 PLT변화")
 
 uploaded_file = st.file_uploader("엑셀 파일 업로드", type=["xlsx"])
 
@@ -78,17 +78,19 @@ if uploaded_file:
         measure = format_number(row['Measure'])
         summary_lines.append(f"{container} / {seal}\nTOTAL: {pkgs} PKGS / {weight} KG / {measure} CBM\n")
 
-    mark_lines = ["<MARK>"]
+    mark_lines = ["<MARK>", ""]
     for _, row in marks.iterrows():
         container = row['컨테이너 번호']
         seal = row['Seal#1']
         hbls = row['House B/L No']
         if not is_single_container:
-            mark_lines.append("")
             mark_lines.append(f"{container} / {seal}")
         mark_lines.extend(sorted(hbls))
-    
-    desc_lines = ["<DESC>"]
+        mark_lines.append("")
+
+    mark_lines.append("")  # <MARK> 블록 끝나고 2줄 띄움
+
+    desc_lines = ["<DESC>", ""]
     prev_container = None
     prev_seal = None
     for i, row in desc.iterrows():
@@ -101,17 +103,14 @@ if uploaded_file:
         measure = format_number(row['Measure'])
 
         if not is_single_container and ((container != prev_container) or (seal != prev_seal)):
-            if prev_container is not None:
-                desc_lines.append("")
-                desc_lines.append("")
-                desc_lines.append("")
+            desc_lines.extend(["", "", ""])
             desc_lines.append(f"{container} / {seal}")
             desc_lines.append("")
             prev_container, prev_seal = container, seal
 
         desc_lines.append(f"{hbl}\n{pkgs} {unit} / {weight} KGS / {measure} CBM")
 
-    result_text = "\n".join(summary_lines + [""] + mark_lines + [""] + desc_lines)
+    result_text = "\n".join(summary_lines + [""] + mark_lines + desc_lines)
     file_name = os.path.splitext(uploaded_file.name)[0] + ".txt"
 
     st.text_area("📋 결과 출력:", result_text, height=600)
