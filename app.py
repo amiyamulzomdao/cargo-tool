@@ -88,7 +88,7 @@ if uploaded_file:
         mark_lines.extend(sorted(hbls))
         mark_lines.append("")
 
-    desc_lines = ["<DESC>"]  # 🔸 첫 줄 개행 제거
+    desc_lines = ["<DESC>\n"]  # ✅ 한 줄만 개행
     prev_container = None
     prev_seal = None
     for i, row in desc.iterrows():
