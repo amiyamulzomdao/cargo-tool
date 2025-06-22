@@ -88,7 +88,7 @@ if uploaded_file:
         mark_lines.extend(sorted(hbls))
         mark_lines.append("")
 
-    desc_lines = ["<DESC>"]  # 🔸 이제 <DESC> 바로 다음 줄은 공백 1줄만
+    desc_lines = ["<DESC>", ""]  # <DESC> 다음 정확히 1줄 개행 유지
     prev_container = None
     prev_seal = None
     for i, row in desc.iterrows():
@@ -103,11 +103,12 @@ if uploaded_file:
         if not is_single_container and ((container != prev_container) or (seal != prev_seal)):
             desc_lines.append("\n\n\n")
             desc_lines.append(f"{container} / {seal}")
+            desc_lines.append("")  # 컨테이너 다음 한 줄 개행 추가
             prev_container, prev_seal = container, seal
 
         desc_lines.append(f"{hbl}\n{pkgs} {unit} / {weight} KGS / {measure} CBM")
 
-    result_text = "\n".join(summary_lines + [""] + mark_lines + desc_lines)  # 🔸 desc 앞 개행 제거
+    result_text = "\n".join(summary_lines + [""] + mark_lines + desc_lines)
     file_name = os.path.splitext(uploaded_file.name)[0] + ".txt"
 
     st.text_area("📋 결과 출력:", result_text, height=600)
