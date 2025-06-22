@@ -1,6 +1,7 @@
+# Code Version: SRAuto2 - Refined spacing and structure
 import streamlit as st
 import pandas as pd
-import os
+import os  # 파일명 추출용
 from datetime import datetime
 
 
@@ -37,72 +38,79 @@ def log_uploaded_filename(file_name):
             with open(log_path, "a", encoding="utf-8") as f:
                 f.write(log_entry)
 
+# Streamlit UI
 st.title("🚢 SR 제출 자동 정리기")
 st.markdown("엑셀 파일을 업로드하면 컨테이너별 마크 및 디스크립션을 정리해드립니다.")
 force_to_pkg = st.checkbox("코스코 PLT변환")
 uploaded_file = st.file_uploader("엑셀 파일 업로드", type=["xlsx"])
 
 if uploaded_file:
+    # Log upload
     log_uploaded_filename(uploaded_file.name)
+
+    # Read and preprocess
     df = pd.read_excel(uploaded_file)
     df = df[['House B/L No','컨테이너 번호','Seal#1','포장갯수','단위','Weight','Measure']].copy()
     df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
 
     # Aggregations
-    total_summary = df.groupby(['컨테이너 번호','Seal#1']).agg({'포장갯수':'sum','Weight':'sum','Measure':'sum'}).reset_index()
+    total_summary = df.groupby(['컨테이너 번호','Seal#1']).agg(
+        포장갯수=('포장갯수','sum'),
+        Weight=('Weight','sum'),
+        Measure=('Measure','sum')
+    ).reset_index()
     marks = df.groupby(['컨테이너 번호','Seal#1'])['House B/L No'].unique().reset_index()
-    desc = df.groupby(['컨테이너 번호','Seal#1','House B/L No']).agg({'포장갯수':'sum','단위':'first','Weight':'sum','Measure':'sum'}).reset_index().sort_values(['컨테이너 번호','Seal#1','House B/L No'])
+    desc = df.groupby(['컨테이너 번호','Seal#1','House B/L No']).agg(
+        포장갯수=('포장갯수','sum'),
+        단위=('단위','first'),
+        Weight=('Weight','sum'),
+        Measure=('Measure','sum')
+    ).reset_index().sort_values(['컨테이너 번호','Seal#1','House B/L No'])
 
     is_single = len(total_summary) == 1
 
     # SUMMARY
     summary_lines = []
-    for _, r in total_summary.iterrows():
-        pkg = int(r['포장갯수'])
-        w = format_number(r['Weight'])
-        m = format_number(r['Measure'])
-        summary_lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}\nTOTAL: {pkg} PKGS / {w} KG / {m} CBM\n")
+    for _, row in total_summary.iterrows():
+        pkg = int(row['포장갯수'])
+        w = format_number(row['Weight'])
+        m = format_number(row['Measure'])
+        summary_lines.append(f"{row['컨테이너 번호']} / {row['Seal#1']}\nTOTAL: {pkg} PKGS / {w} KG / {m} CBM\n")
 
     # MARK
     mark_lines = ["<MARK>", ""]
-    for _, r in marks.iterrows():
+    for _, row in marks.iterrows():
         if not is_single:
-            mark_lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
+            mark_lines.append(f"{row['컨테이너 번호']} / {row['Seal#1']}")
             mark_lines.append("")
-        mark_lines.extend(sorted(r['House B/L No']))
+        mark_lines.extend(sorted(row['House B/L No']))
         mark_lines.append("")
     mark_lines.append("")  # end of MARK
 
     # DESC
     desc_lines = ["<DESC>", ""]
     prev = (None, None)
-    for _, r in desc.iterrows():
-        cur = (r['컨테이너 번호'], r['Seal#1'])
+    for _, row in desc.iterrows():
+        cur = (row['컨테이너 번호'], row['Seal#1'])
         if cur != prev:
             if prev[0] is not None:
-                desc_lines.extend(["","",""])
+                # container separator: 3 blank lines
+                desc_lines.extend(["", "", ""])
+            # container header + 1 blank line
             desc_lines.append(f"{cur[0]} / {cur[1]}")
             desc_lines.append("")
             prev = cur
-        desc_lines.append(r['House B/L No'])
-        desc_lines.append(f"{int(r['포장갯수'])} {format_unit(r['단위'], r['포장갯수'], force_to_pkg)} / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
+        # HBL entry + 1 blank line
+        desc_lines.append(row['House B/L No'])
+        desc_lines.append(f"{int(row['포장갯수'])} {format_unit(row['단위'], row['포장갯수'], force_to_pkg)} / {format_number(row['Weight'])} KGS / {format_number(row['Measure'])} CBM")
         desc_lines.append("")
 
-    # Combine
+    # Combine sections (add 2 blank lines between MARK and DESC)
     result_text = "\n".join(summary_lines + [""] + mark_lines + ["", ""] + desc_lines)
 
-    # 🔸 Color background for 0 CBM
-    html_lines = []
-    for line in result_text.split("\n"):
-        if ' 0 CBM' in line:
-            html_lines.append(f"<div style='background-color: #ffdddd'>{line}</div>")
-        else:
-            html_lines.append(f"<div>{line}</div>")
-    html = "<br>".join(html_lines)
-    st.markdown(html, unsafe_allow_html=True)
-
-    # Download
-    st.download_button("결과 텍스트 다운로드", result_text, file_name=os.path.splitext(uploaded_file.name)[0]+".txt")
+    # Display and download
+    st.text_area("📋 결과 출력:", result_text, height=600)
+    st.download_button("결과 텍스트 다운로드", result_text, file_name=os.path.splitext(uploaded_file.name)[0] + ".txt")
 
 if st.sidebar.button("📁 업로드 로그 보기"):
     if os.path.exists("upload_log.txt"):
