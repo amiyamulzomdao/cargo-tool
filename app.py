@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os  # 파일명 추출용
+from datetime import datetime
 
 
 def format_unit(unit, count, force_to_pkg=False):
@@ -22,6 +23,22 @@ def format_number(value):
     return text  # 쉼표 제거된 숫자 반환
 
 
+def log_uploaded_filename(file_name):
+    log_path = "upload_log.txt"
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    log_entry = f"{now} - {file_name}\n"
+
+    if not os.path.exists(log_path):
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write(log_entry)
+    else:
+        with open(log_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        if log_entry not in lines:
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(log_entry)
+
+
 st.title("🚢 SR 제출 자동 정리기")
 st.markdown("엑셀 파일을 업로드하면 컨테이너별 마크 및 디스크립션을 정리해드립니다.")
 
@@ -30,6 +47,8 @@ force_to_pkg = st.checkbox("코스코 PLT변환")
 uploaded_file = st.file_uploader("엑셀 파일 업로드", type=["xlsx"])
 
 if uploaded_file:
+    log_uploaded_filename(uploaded_file.name)  # 파일명 로그 기록
+
     df = pd.read_excel(uploaded_file)
 
     # 필요한 열 추출 및 정리
@@ -104,3 +123,12 @@ if uploaded_file:
 
     st.text_area("📋 결과 출력:", result_text, height=600)
     st.download_button("결과 텍스트 다운로드", result_text, file_name=file_name)
+
+# 로그 보기 버튼 (관리자만 확인)
+if st.sidebar.button("📁 업로드 로그 보기"):
+    if os.path.exists("upload_log.txt"):
+        with open("upload_log.txt", "r", encoding="utf-8") as f:
+            logs = f.read()
+        st.sidebar.text_area("업로드 로그", logs, height=300)
+    else:
+        st.sidebar.warning("업로드 로그가 아직 없습니다.")
