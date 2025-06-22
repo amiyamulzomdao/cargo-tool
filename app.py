@@ -88,10 +88,10 @@ if uploaded_file:
         mark_lines.extend(sorted(hbls))
         mark_lines.append("")
 
-    desc_lines = ["<DESC>\n"]  # 🔸 개행 한 줄만 추가
+    desc_lines = ["<DESC>"]  # 🔸 첫 줄 개행 제거
     prev_container = None
     prev_seal = None
-    for _, row in desc.iterrows():
+    for i, row in desc.iterrows():
         container = row['컨테이너 번호']
         seal = row['Seal#1']
         hbl = row['House B/L No']
