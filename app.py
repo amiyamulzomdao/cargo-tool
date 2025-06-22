@@ -1,4 +1,4 @@
-# Code Version: SRAuto2 - Refined spacing and structure
+# Code Version: SRAuto3 - Two-line MARK-DESC separator
 import streamlit as st
 import pandas as pd
 import os  # 파일명 추출용
@@ -45,10 +45,7 @@ force_to_pkg = st.checkbox("코스코 PLT변환")
 uploaded_file = st.file_uploader("엑셀 파일 업로드", type=["xlsx"])
 
 if uploaded_file:
-    # Log upload
     log_uploaded_filename(uploaded_file.name)
-
-    # Read and preprocess
     df = pd.read_excel(uploaded_file)
     df = df[['House B/L No','컨테이너 번호','Seal#1','포장갯수','단위','Weight','Measure']].copy()
     df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
@@ -85,7 +82,6 @@ if uploaded_file:
             mark_lines.append("")
         mark_lines.extend(sorted(row['House B/L No']))
         mark_lines.append("")
-    mark_lines.append("")  # end of MARK
 
     # DESC
     desc_lines = ["<DESC>", ""]
@@ -96,7 +92,6 @@ if uploaded_file:
             if prev[0] is not None:
                 # container separator: 3 blank lines
                 desc_lines.extend(["", "", ""])
-            # container header + 1 blank line
             desc_lines.append(f"{cur[0]} / {cur[1]}")
             desc_lines.append("")
             prev = cur
@@ -105,7 +100,7 @@ if uploaded_file:
         desc_lines.append(f"{int(row['포장갯수'])} {format_unit(row['단위'], row['포장갯수'], force_to_pkg)} / {format_number(row['Weight'])} KGS / {format_number(row['Measure'])} CBM")
         desc_lines.append("")
 
-    # Combine sections (add 2 blank lines between MARK and DESC)
+    # Combine sections (add exactly 2 blank lines between MARK and DESC)
     result_text = "\n".join(summary_lines + [""] + mark_lines + ["", ""] + desc_lines)
 
     # Display and download
