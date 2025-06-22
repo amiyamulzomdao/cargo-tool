@@ -42,7 +42,7 @@ def log_uploaded_filename(file_name):
 st.title("🚢 SR 제출 자동 정리기")
 st.markdown("엑셀 파일을 업로드하면 컨테이너별 마크 및 디스크립션을 정리해드립니다.")
 
-force_to_pkg = st.checkbox("코스코 PLT변화")
+force_to_pkg = st.checkbox("코스코 PLT변환")
 
 uploaded_file = st.file_uploader("엑셀 파일 업로드", type=["xlsx"])
 
@@ -87,13 +87,12 @@ if uploaded_file:
             mark_lines.append(f"{container} / {seal}")
         mark_lines.extend(sorted(hbls))
         mark_lines.append("")
+    mark_lines.append("")  # 🔸 <MARK> 끝나고 빈 줄 2칸 (이미 1칸은 list init)
 
-    mark_lines.append("")  # <MARK> 블록 끝나고 2줄 띄움
-
-    desc_lines = ["<DESC>", ""]
+    desc_lines = ["<DESC>", ""]  # 🔸 <DESC> 다음 정확히 1줄 띄움
     prev_container = None
     prev_seal = None
-    for i, row in desc.iterrows():
+    for _, row in desc.iterrows():
         container = row['컨테이너 번호']
         seal = row['Seal#1']
         hbl = row['House B/L No']
@@ -103,14 +102,15 @@ if uploaded_file:
         measure = format_number(row['Measure'])
 
         if not is_single_container and ((container != prev_container) or (seal != prev_seal)):
-            desc_lines.extend(["", "", ""])
+            desc_lines.extend(["", "", ""])  # 🔸 컨테이너 구분 시 3줄 띄움
             desc_lines.append(f"{container} / {seal}")
-            desc_lines.append("")
+            desc_lines.append("")  # 🔸 컨테이너 다음 1줄 띄움
             prev_container, prev_seal = container, seal
 
         desc_lines.append(f"{hbl}\n{pkgs} {unit} / {weight} KGS / {measure} CBM")
 
-    result_text = "\n".join(summary_lines + [""] + mark_lines + desc_lines)
+    # 🔸 <MARK>과 <DESC> 사이에 빈 줄 2칸 추가
+    result_text = "\n".join(summary_lines + [""] + mark_lines + ["", ""] + desc_lines)
     file_name = os.path.splitext(uploaded_file.name)[0] + ".txt"
 
     st.text_area("📋 결과 출력:", result_text, height=600)
