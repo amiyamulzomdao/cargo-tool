@@ -84,10 +84,10 @@ if uploaded_file:
         seal = row['Seal#1']
         hbls = row['House B/L No']
         if not is_single_container:
+            mark_lines.append("")
             mark_lines.append(f"{container} / {seal}")
         mark_lines.extend(sorted(hbls))
-        mark_lines.append("")
-
+    
     desc_lines = ["<DESC>"]
     prev_container = None
     prev_seal = None
@@ -101,7 +101,10 @@ if uploaded_file:
         measure = format_number(row['Measure'])
 
         if not is_single_container and ((container != prev_container) or (seal != prev_seal)):
-            desc_lines.append("")  # 빈 줄 1칸 추가
+            if prev_container is not None:
+                desc_lines.append("")
+                desc_lines.append("")
+                desc_lines.append("")
             desc_lines.append(f"{container} / {seal}")
             desc_lines.append("")
             prev_container, prev_seal = container, seal
