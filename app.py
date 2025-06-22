@@ -102,7 +102,7 @@ if uploaded_file:
 
         if not is_single_container and ((container != prev_container) or (seal != prev_seal)):
             desc_lines.append("\n\n\n")  # 🔸 3칸 띄우기 (컨테이너 전환 시에만)
-            desc_lines.append(f"{container} / {seal}")
+            desc_lines.append(f"{container} / {seal}\n")  # 🔸 개행 추가
             prev_container, prev_seal = container, seal
 
         desc_lines.append(f"{hbl}\n{pkgs} {unit} / {weight} KGS / {measure} CBM")
