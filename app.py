@@ -17,10 +17,10 @@ def format_unit(unit, count, force_to_pkg=False):
 
 def format_number(value):
     value = round(value, 3)
-    text = f"{value:.3f}"  # 항상 소수점 셋째자리까지 만들고
+    text = f"{value:.3f}"
     if '.' in text:
-        text = text.rstrip('0').rstrip('.')  # 0과 . 제거
-    return text  # 쉼표 제거된 숫자 반환
+        text = text.rstrip('0').rstrip('.')
+    return text
 
 
 def log_uploaded_filename(file_name):
@@ -47,35 +47,28 @@ force_to_pkg = st.checkbox("코스코 PLT변환")
 uploaded_file = st.file_uploader("엑셀 파일 업로드", type=["xlsx"])
 
 if uploaded_file:
-    log_uploaded_filename(uploaded_file.name)  # 파일명 로그 기록
-
+    log_uploaded_filename(uploaded_file.name)
     df = pd.read_excel(uploaded_file)
-
-    # 필요한 열 추출 및 정리
     df = df[['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']].copy()
     df['Seal#1'] = df['Seal#1'].fillna('').apply(lambda x: str(x).split('.')[0])
 
-    # 컨+씰 기준으로 전체 합산
     total_summary = df.groupby(['컨테이너 번호', 'Seal#1']).agg({
         '포장갯수': 'sum',
         'Weight': 'sum',
         'Measure': 'sum'
     }).reset_index()
 
-    # 마크 정리용 (컨+씰별로 HBL 리스트)
     marks = df.groupby(['컨테이너 번호', 'Seal#1'])['House B/L No'].unique().reset_index()
 
-    # 디스크립션 정리용 (컨+씰+HBL별로 나누기)
     desc = df.groupby(['컨테이너 번호', 'Seal#1', 'House B/L No']).agg({
         '포장갯수': 'sum',
         '단위': 'first',
         'Weight': 'sum',
         'Measure': 'sum'
-    }).reset_index()
+    }).reset_index().sort_values(by=['컨테이너 번호', 'Seal#1', 'House B/L No'])
 
     is_single_container = total_summary.shape[0] == 1
 
-    # 총합 출력
     summary_lines = []
     for _, row in total_summary.iterrows():
         container = row['컨테이너 번호']
@@ -85,7 +78,6 @@ if uploaded_file:
         measure = format_number(row['Measure'])
         summary_lines.append(f"{container} / {seal}\nTOTAL: {pkgs} PKGS / {weight} KG / {measure} CBM\n")
 
-    # MARK 출력
     mark_lines = ["<MARK>\n"]
     for _, row in marks.iterrows():
         container = row['컨테이너 번호']
@@ -93,10 +85,9 @@ if uploaded_file:
         hbls = row['House B/L No']
         if not is_single_container:
             mark_lines.append(f"{container} / {seal}\n")
-        mark_lines.extend(hbls)
+        mark_lines.extend(sorted(hbls))
         mark_lines.append("")
 
-    # DESC 출력
     desc_lines = ["<DESC>\n"]
     prev_container = None
     prev_seal = None
@@ -110,21 +101,18 @@ if uploaded_file:
         measure = format_number(row['Measure'])
 
         if not is_single_container and ((container != prev_container) or (seal != prev_seal)):
+            desc_lines.append("\n\n\n")  # 3칸 띄우기
             desc_lines.append(f"{container} / {seal}\n")
             prev_container, prev_seal = container, seal
 
         desc_lines.append(f"{hbl}\n{pkgs} {unit} / {weight} KGS / {measure} CBM\n")
 
-    # 최종 결과 조립
     result_text = "\n".join(summary_lines + [""] + mark_lines + [""] + desc_lines)
-
-    # 파일명 자동 설정
     file_name = os.path.splitext(uploaded_file.name)[0] + ".txt"
 
     st.text_area("📋 결과 출력:", result_text, height=600)
     st.download_button("결과 텍스트 다운로드", result_text, file_name=file_name)
 
-# 로그 보기 버튼 (관리자만 확인)
 if st.sidebar.button("📁 업로드 로그 보기"):
     if os.path.exists("upload_log.txt"):
         with open("upload_log.txt", "r", encoding="utf-8") as f:
