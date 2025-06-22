@@ -78,17 +78,17 @@ if uploaded_file:
         measure = format_number(row['Measure'])
         summary_lines.append(f"{container} / {seal}\nTOTAL: {pkgs} PKGS / {weight} KG / {measure} CBM\n")
 
-    mark_lines = ["<MARK>\n"]
+    mark_lines = ["<MARK>"]
     for _, row in marks.iterrows():
         container = row['컨테이너 번호']
         seal = row['Seal#1']
         hbls = row['House B/L No']
         if not is_single_container:
-            mark_lines.append(f"{container} / {seal}\n")
+            mark_lines.append(f"{container} / {seal}")
         mark_lines.extend(sorted(hbls))
         mark_lines.append("")
 
-    desc_lines = ["<DESC>\n"]  # ✅ 한 줄만 개행
+    desc_lines = ["<DESC>"]  # 🔸 이제 <DESC> 바로 다음 줄은 공백 1줄만
     prev_container = None
     prev_seal = None
     for i, row in desc.iterrows():
@@ -102,12 +102,12 @@ if uploaded_file:
 
         if not is_single_container and ((container != prev_container) or (seal != prev_seal)):
             desc_lines.append("\n\n\n")
-            desc_lines.append(f"{container} / {seal}\n")
+            desc_lines.append(f"{container} / {seal}")
             prev_container, prev_seal = container, seal
 
         desc_lines.append(f"{hbl}\n{pkgs} {unit} / {weight} KGS / {measure} CBM")
 
-    result_text = "\n".join(summary_lines + [""] + mark_lines + [""] + desc_lines)
+    result_text = "\n".join(summary_lines + [""] + mark_lines + desc_lines)  # 🔸 desc 앞 개행 제거
     file_name = os.path.splitext(uploaded_file.name)[0] + ".txt"
 
     st.text_area("📋 결과 출력:", result_text, height=600)
