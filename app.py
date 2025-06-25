@@ -1,4 +1,4 @@
-# Code Version: SRAuto3 - Two-line MARK-DESC separator
+# Code Version: SRAuto5 - Updated option label to HS CODE추가
 import streamlit as st
 import pandas as pd
 import os  # 파일명 추출용
@@ -42,11 +42,13 @@ def log_uploaded_filename(file_name):
 st.title("🚢 SR 제출 자동 정리기")
 st.markdown("엑셀 파일을 업로드하면 컨테이너별 마크 및 디스크립션을 정리해드립니다.")
 force_to_pkg = st.checkbox("코스코 PLT변환")
-uploaded_file = st.file_uploader("엑셀 파일 업로드", type=["xlsx"])
+main_file = st.file_uploader("메인 엑셀 파일 업로드", type=["xlsx"])
+extra_file = st.file_uploader("추가 상세 엑셀 파일 업로드 (선택)", type=["xlsx"], key="extra")
+option = st.radio("추가 정보", ["중량만", "HS CODE추가"])
 
-if uploaded_file:
-    log_uploaded_filename(uploaded_file.name)
-    df = pd.read_excel(uploaded_file)
+if main_file:
+    log_uploaded_filename(main_file.name)
+    df = pd.read_excel(main_file)
     df = df[['House B/L No','컨테이너 번호','Seal#1','포장갯수','단위','Weight','Measure']].copy()
     df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
 
@@ -68,44 +70,70 @@ if uploaded_file:
 
     # SUMMARY
     summary_lines = []
-    for _, row in total_summary.iterrows():
-        pkg = int(row['포장갯수'])
-        w = format_number(row['Weight'])
-        m = format_number(row['Measure'])
-        summary_lines.append(f"{row['컨테이너 번호']} / {row['Seal#1']}\nTOTAL: {pkg} PKGS / {w} KG / {m} CBM\n")
+    for _, r in total_summary.iterrows():
+        pkg = int(r['포장갯수'])
+        w = format_number(r['Weight'])
+        m = format_number(r['Measure'])
+        summary_lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}\nTOTAL: {pkg} PKGS / {w} KG / {m} CBM\n")
 
     # MARK
     mark_lines = ["<MARK>", ""]
-    for _, row in marks.iterrows():
+    for _, r in marks.iterrows():
         if not is_single:
-            mark_lines.append(f"{row['컨테이너 번호']} / {row['Seal#1']}")
+            mark_lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
             mark_lines.append("")
-        mark_lines.extend(sorted(row['House B/L No']))
+        mark_lines.extend(sorted(r['House B/L No']))
         mark_lines.append("")
+    mark_lines.append("")  # end of MARK
 
-    # DESC
+    # DESC - main
     desc_lines = ["<DESC>", ""]
     prev = (None, None)
-    for _, row in desc.iterrows():
-        cur = (row['컨테이너 번호'], row['Seal#1'])
+    for _, r in desc.iterrows():
+        cur = (r['컨테이너 번호'], r['Seal#1'])
         if cur != prev:
             if prev[0] is not None:
-                # container separator: 3 blank lines
                 desc_lines.extend(["", "", ""])
             desc_lines.append(f"{cur[0]} / {cur[1]}")
             desc_lines.append("")
             prev = cur
-        # HBL entry + 1 blank line
-        desc_lines.append(row['House B/L No'])
-        desc_lines.append(f"{int(row['포장갯수'])} {format_unit(row['단위'], row['포장갯수'], force_to_pkg)} / {format_number(row['Weight'])} KGS / {format_number(row['Measure'])} CBM")
+        desc_lines.append(r['House B/L No'])
+        desc_lines.append(f"{int(r['포장갯수'])} {format_unit(r['단위'], r['포장갯수'], force_to_pkg)} / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
         desc_lines.append("")
 
-    # Combine sections (add exactly 2 blank lines between MARK and DESC)
-    result_text = "\n".join(summary_lines + [""] + mark_lines + ["", ""] + desc_lines)
+    result_lines = summary_lines + [""] + mark_lines + ["", ""] + desc_lines
 
-    # Display and download
+    # Optional extra DESC
+    if extra_file:
+        log_uploaded_filename(extra_file.name)
+        ex = pd.read_excel(extra_file)
+        ex['Seal#1'] = ex['Seal#1'].fillna('').astype(str).str.split('.').str[0]
+        result_lines += ["", "<DESC>", ""]
+        if not is_single:
+            result_lines += ["", "", ""]
+        prev2 = (None, None)
+        for _, r in ex.iterrows():
+            cur2 = (r['컨테이너 번호'], r['Seal#1'])
+            if cur2 != prev2:
+                result_lines.append(f"{cur2[0]} / {cur2[1]}")
+                result_lines.append("")
+                prev2 = cur2
+            result_lines.append(r['House B/L No'])
+            result_lines.append(f"{int(r['포장갯수'])} {format_unit(r['단위'], r['포장갯수'], force_to_pkg)} / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
+            # Append extra fields only if present
+            if option == "HS CODE추가":
+                desc_val = r.get('Description', None)
+                code_val = r.get('HS code', None)
+                if pd.notna(desc_val) and str(desc_val).strip():
+                    result_lines.append(str(desc_val).strip())
+                if pd.notna(code_val) and str(code_val).strip():
+                    result_lines.append(str(code_val).strip())
+            result_lines.append("")
+
+    result_text = "\n".join(result_lines)
+
     st.text_area("📋 결과 출력:", result_text, height=600)
-    st.download_button("결과 텍스트 다운로드", result_text, file_name=os.path.splitext(uploaded_file.name)[0] + ".txt")
+    st.download_button("결과 텍스트 다운로드", result_text, file_name=os.path.splitext(main_file.name)[0] + ".txt")
 
 if st.sidebar.button("📁 업로드 로그 보기"):
     if os.path.exists("upload_log.txt"):
