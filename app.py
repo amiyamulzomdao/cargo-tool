@@ -1,4 +1,4 @@
-# Code Version: SRAuto5 - Updated option label to HS CODE추가
+# Code Version: SRAuto7 - 無버튼 HS CODE 추가
 import streamlit as st
 import pandas as pd
 import os  # 파일명 추출용
@@ -42,9 +42,11 @@ def log_uploaded_filename(file_name):
 st.title("🚢 SR 제출 자동 정리기")
 st.markdown("엑셀 파일을 업로드하면 컨테이너별 마크 및 디스크립션을 정리해드립니다.")
 force_to_pkg = st.checkbox("코스코 PLT변환")
+
+# 메인 파일
 main_file = st.file_uploader("메인 엑셀 파일 업로드", type=["xlsx"])
-extra_file = st.file_uploader("추가 상세 엑셀 파일 업로드 (선택)", type=["xlsx"], key="extra")
-option = st.radio("추가 정보", ["중량만", "HS CODE추가"])
+# HS CODE 자동 추가용 상세 파일
+extra_file = st.file_uploader("추가 상세 엑셀 파일 업로드 (선택) -> 품목, HS CODE 추가 자동", type=["xlsx"], key="extra")
 
 if main_file:
     log_uploaded_filename(main_file.name)
@@ -86,7 +88,7 @@ if main_file:
         mark_lines.append("")
     mark_lines.append("")  # end of MARK
 
-    # DESC - main
+    # DESC - 메인
     desc_lines = ["<DESC>", ""]
     prev = (None, None)
     for _, r in desc.iterrows():
@@ -103,31 +105,32 @@ if main_file:
 
     result_lines = summary_lines + [""] + mark_lines + ["", ""] + desc_lines
 
-    # Optional extra DESC
+    # 상세 파일이 있을 때 HS CODE 자동 추가
     if extra_file:
         log_uploaded_filename(extra_file.name)
         ex = pd.read_excel(extra_file)
-        ex['Seal#1'] = ex['Seal#1'].fillna('').astype(str).str.split('.').str[0]
+        if 'Seal#1' in ex.columns:
+            ex['Seal#1'] = ex['Seal#1'].fillna('').astype(str).str.split('.').str[0]
+        else:
+            ex['Seal#1'] = ''
         result_lines += ["", "<DESC>", ""]
         if not is_single:
             result_lines += ["", "", ""]
         prev2 = (None, None)
         for _, r in ex.iterrows():
-            cur2 = (r['컨테이너 번호'], r['Seal#1'])
+            cur2 = (r.get('컨테이너 번호',''), r['Seal#1'])
             if cur2 != prev2:
                 result_lines.append(f"{cur2[0]} / {cur2[1]}")
                 result_lines.append("")
                 prev2 = cur2
-            result_lines.append(r['House B/L No'])
-            result_lines.append(f"{int(r['포장갯수'])} {format_unit(r['단위'], r['포장갯수'], force_to_pkg)} / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
-            # Append extra fields only if present
-            if option == "HS CODE추가":
-                desc_val = r.get('Description', None)
-                code_val = r.get('HS code', None)
-                if pd.notna(desc_val) and str(desc_val).strip():
-                    result_lines.append(str(desc_val).strip())
-                if pd.notna(code_val) and str(code_val).strip():
-                    result_lines.append(str(code_val).strip())
+            # HBL
+            result_lines.append(r.get('House B/L No',''))
+            result_lines.append(f"{int(r.get('포장갯수',0))} {format_unit(r.get('단위',''), r.get('포장갯수',0), force_to_pkg)} / {format_number(r.get('Weight',0))} KGS / {format_number(r.get('Measure',0))} CBM")
+            # 품목과 HS CODE 자동 추가
+            if 'Description' in r and pd.notna(r['Description']):
+                result_lines.append(str(r['Description']).strip())
+            if 'HS code' in r and pd.notna(r['HS code']):
+                result_lines.append(str(r['HS code']).strip())
             result_lines.append("")
 
     result_text = "\n".join(result_lines)
