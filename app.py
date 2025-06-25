@@ -1,4 +1,4 @@
-# Code Version: SRAuto8 - Extra file row-pair parsing support
+# Code Version: SRAuto9 - Integrate extra descriptions into main <DESC>
 import streamlit as st
 import pandas as pd
 import os  # 파일명 추출용
@@ -8,7 +8,6 @@ from datetime import datetime
 
 def format_unit(unit, count, force_to_pkg=False):
     unit_map = {'PK': 'PKG', 'PL': 'PLT', 'CT': 'CTN'}
-    base = ' '  # default
     if force_to_pkg and unit.upper() == 'PL':
         base = 'PKG'
     else:
@@ -31,85 +30,104 @@ def log_uploaded_filename(file_name):
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     entry = f"{now} - {file_name}\n"
     if not os.path.exists(log_path):
-        with open(log_path,'w',encoding='utf-8') as f: f.write(entry)
+        with open(log_path,'w',encoding='utf-8') as f:
+            f.write(entry)
     else:
         with open(log_path,'r',encoding='utf-8') as f:
             lines = f.readlines()
         if entry not in lines:
-            with open(log_path,'a',encoding='utf-8') as f: f.write(entry)
+            with open(log_path,'a',encoding='utf-8') as f:
+                f.write(entry)
 
 # UI
 st.title("🚢 SR 제출 자동 정리기")
 st.markdown("엑셀 파일을 업로드하면 컨테이너별 마크 및 디스크립션을 정리해드립니다.")
 force_to_pkg = st.checkbox("코스코 PLT변환")
 main_file = st.file_uploader("메인 엑셀 파일 업로드", type=["xlsx"])
-extra_file = st.file_uploader("추가 상세 엑셀 파일 업로드 (선택) -> 품목, HS CODE 추가 자동(Row-pair)", type=["xlsx"], key="extra")
+extra_file = st.file_uploader("추가 상세 엑셀 파일 업로드 (선택) -> 품목, HS CODE 자동 매핑", type=["xlsx"], key="extra")
+
+# Prepare extra mapping if provided
+extra_map = {}
+if extra_file:
+    log_uploaded_filename(extra_file.name)
+    # Expect two columns: HBL and Description/HS code combined in next column
+    ex = pd.read_excel(extra_file, header=None)
+    vals = ex.iloc[:,0].dropna().astype(str).tolist()
+    # build map: pairs of rows
+    for i in range(0, len(vals), 2):
+        hbl = vals[i].strip()
+        info = vals[i+1].strip() if i+1 < len(vals) else ''
+        # optionally split code at end
+        parts = re.split(r"\s+", info)
+        code = ''
+        desc_text = info
+        if parts and re.match(r"^[0-9]{4,6}(?:\.[0-9]+)?$", parts[-1]):
+            code = parts[-1]
+            desc_text = ' '.join(parts[:-1])
+        extra_map[hbl] = {'desc': desc_text, 'code': code}
 
 if main_file:
     log_uploaded_filename(main_file.name)
     df = pd.read_excel(main_file)
-    df = df[['House B/L No','컨테이너 번호','Seal#1','포장갯수','단위','Weight','Measure']]
+    df = df[['House B/L No','컨테이너 번호','Seal#1','포장갯수','단위','Weight','Measure']].copy()
     df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
 
     # Aggregations
-    total = df.groupby(['컨테이너 번호','Seal#1']).agg(포장갯수=('포장갯수','sum'), Weight=('Weight','sum'), Measure=('Measure','sum')).reset_index()
+    total = df.groupby(['컨테이너 번호','Seal#1']).agg(
+        포장갯수=('포장갯수','sum'),
+        Weight=('Weight','sum'),
+        Measure=('Measure','sum')
+    ).reset_index()
     marks = df.groupby(['컨테이너 번호','Seal#1'])['House B/L No'].unique().reset_index()
-    desc = df.groupby(['컨테이너 번호','Seal#1','House B/L No']).agg(포장갯수=('포장갯수','sum'), 단위=('단위','first'), Weight=('Weight','sum'), Measure=('Measure','sum')).reset_index().sort_values(['컨테이너 번호','Seal#1','House B/L No'])
+    desc = df.groupby(['컨테이너 번호','Seal#1','House B/L No']).agg(
+        포장갯수=('포장갯수','sum'),
+        단위=('단위','first'),
+        Weight=('Weight','sum'),
+        Measure=('Measure','sum')
+    ).reset_index().sort_values(['컨테이너 번호','Seal#1','House B/L No'])
     single = (len(total)==1)
 
+    # Build lines
+    lines = []
     # SUMMARY
-    lines=[]
-    for _,r in total.iterrows():
+    for _, r in total.iterrows():
         pkg=int(r['포장갯수']); w=format_number(r['Weight']); m=format_number(r['Measure'])
         lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}\nTOTAL: {pkg} PKGS / {w} KG / {m} CBM\n")
-
     # MARK
-    lines+=["<MARK>",""]
-    for _,r in marks.iterrows():
+    lines += ["<MARK>", ""]
+    for _, r in marks.iterrows():
         if not single:
             lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
             lines.append("")
-        lines+=sorted(r['House B/L No'])
+        lines += sorted(r['House B/L No'])
         lines.append("")
     lines.append("")
-
-    # DESC main
-    lines+= ["<DESC>",""]
-    prev=(None,None)
-    for _,r in desc.iterrows():
-        cur=(r['컨테이너 번호'], r['Seal#1'])
-        if cur!=prev:
+    # DESC
+    lines += ["<DESC>", ""]
+    prev = (None, None)
+    for _, r in desc.iterrows():
+        cur = (r['컨테이너 번호'], r['Seal#1'])
+        if cur != prev:
             if prev[0] is not None:
-                lines+= ["","",""]
+                lines += ["", "", ""]
             lines.append(f"{cur[0]} / {cur[1]}")
             lines.append("")
-            prev=cur
-        lines.append(r['House B/L No'])
-        lines.append(f"{int(r['포장갯수'])} {format_unit(r['단위'],r['포장갯수'],force_to_pkg)} / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
+            prev = cur
+        hbl = r['House B/L No']
+        lines.append(hbl)
+        lines.append(f"{int(r['포장갯수'])} {format_unit(r['단위'], r['포장갯수'], force_to_pkg)} / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
+        # Inject extra mapping if exists
+        if hbl in extra_map:
+            info = extra_map[hbl]
+            if info['desc']:
+                lines.append(info['desc'])
+            if info['code']:
+                lines.append(info['code'])
         lines.append("")
-
-    # Extra file row-pair parsing
-    if extra_file:
-        log_uploaded_filename(extra_file.name)
-        ex = pd.read_excel(extra_file, header=None)
-        vals = ex.iloc[:,0].dropna().astype(str).tolist()
-        lines+= ["", "<DESC>", ""]
-        if not single: lines+= ["","",""]
-        for i in range(0,len(vals),2):
-            hbl = vals[i].strip()
-            lines.append(hbl)
-            desc_code = vals[i+1].strip() if i+1 < len(vals) else ''
-            # split code
-            parts = re.split(r"\s+",desc_code)
-            code = parts[-1] if re.match(r"^[0-9]{4,6}(?:\.[0-9]+)?$", parts[-1]) else ''
-            dtext = " ".join(parts[:-1]) if code else desc_code
-            lines.append(dtext)
-            if code: lines.append(code)
-            lines.append("")
 
     result = "\n".join(lines)
     st.text_area("📋 결과 출력:", result, height=600)
-    st.download_button("결과 텍스트 다운로드", result, file_name=os.path.splitext(main_file.name)[0]+".txt")
+    st.download_button("결과 텍스트 다운로드", result, file_name=os.path.splitext(main_file.name)[0] + ".txt")
 
 if st.sidebar.button("📁 업로드 로그 보기"):
     if os.path.exists("upload_log.txt"):
