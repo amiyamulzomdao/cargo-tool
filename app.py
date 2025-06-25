@@ -1,4 +1,4 @@
-# Code Version: SRAuto11 - Simplified extra mapping using two-column Excel
+# Code Version: SRAuto12 - Rename extra_file uploader label
 import streamlit as st
 import pandas as pd
 import os  # 파일명 추출용
@@ -43,7 +43,7 @@ st.title("🚢 SR 제출 자동 정리기")
 st.markdown("엑셀 파일을 업로드하면 컨테이너별 마크 및 디스크립션을 정리해드립니다.")
 force_to_pkg = st.checkbox("코스코 PLT변환")
 main_file = st.file_uploader("메인 엑셀 파일 업로드", type=["xlsx"])
-extra_file = st.file_uploader("추가 매핑 파일 업로드 (선택) -> A열 HBL, B열 매핑 내용", type=["xlsx"], key="extra")
+extra_file = st.file_uploader("품목, HS CODE 추가 (선택)", type=["xlsx"], key="extra")
 
 # Prepare extra mapping if provided: A열->B열
 extra_map = {}
