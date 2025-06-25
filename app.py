@@ -1,8 +1,7 @@
-# Code Version: SRAuto9 - Integrate extra descriptions into main <DESC>
+# Code Version: SRAuto11 - Simplified extra mapping using two-column Excel
 import streamlit as st
 import pandas as pd
 import os  # 파일명 추출용
-import re
 from datetime import datetime
 
 
@@ -44,27 +43,23 @@ st.title("🚢 SR 제출 자동 정리기")
 st.markdown("엑셀 파일을 업로드하면 컨테이너별 마크 및 디스크립션을 정리해드립니다.")
 force_to_pkg = st.checkbox("코스코 PLT변환")
 main_file = st.file_uploader("메인 엑셀 파일 업로드", type=["xlsx"])
-extra_file = st.file_uploader("추가 상세 엑셀 파일 업로드 (선택) -> 품목, HS CODE 자동 매핑", type=["xlsx"], key="extra")
+extra_file = st.file_uploader("추가 매핑 파일 업로드 (선택) -> A열 HBL, B열 매핑 내용", type=["xlsx"], key="extra")
 
-# Prepare extra mapping if provided
+# Prepare extra mapping if provided: A열->B열
 extra_map = {}
 if extra_file:
     log_uploaded_filename(extra_file.name)
-    # Expect two columns: HBL and Description/HS code combined in next column
-    ex = pd.read_excel(extra_file, header=None)
-    vals = ex.iloc[:,0].dropna().astype(str).tolist()
-    # build map: pairs of rows
-    for i in range(0, len(vals), 2):
-        hbl = vals[i].strip()
-        info = vals[i+1].strip() if i+1 < len(vals) else ''
-        # optionally split code at end
-        parts = re.split(r"\s+", info)
-        code = ''
-        desc_text = info
-        if parts and re.match(r"^[0-9]{4,6}(?:\.[0-9]+)?$", parts[-1]):
-            code = parts[-1]
-            desc_text = ' '.join(parts[:-1])
-        extra_map[hbl] = {'desc': desc_text, 'code': code}
+    ex = pd.read_excel(extra_file)
+    # Determine columns: look for 'HBL' and second column
+    cols = list(ex.columns)
+    hbl_col = cols[0]
+    info_col = cols[1] if len(cols) > 1 else None
+    for _, row in ex.iterrows():
+        hbl = str(row.get(hbl_col, '')).strip()
+        info = str(row.get(info_col, '')).strip() if info_col else ''
+        # Only map if HBL exists and info not empty
+        if hbl and info:
+            extra_map[hbl] = info
 
 if main_file:
     log_uploaded_filename(main_file.name)
@@ -85,13 +80,12 @@ if main_file:
         Weight=('Weight','sum'),
         Measure=('Measure','sum')
     ).reset_index().sort_values(['컨테이너 번호','Seal#1','House B/L No'])
-    single = (len(total)==1)
+    single = (len(total) == 1)
 
-    # Build lines
     lines = []
     # SUMMARY
     for _, r in total.iterrows():
-        pkg=int(r['포장갯수']); w=format_number(r['Weight']); m=format_number(r['Measure'])
+        pkg = int(r['포장갯수']); w = format_number(r['Weight']); m = format_number(r['Measure'])
         lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}\nTOTAL: {pkg} PKGS / {w} KG / {m} CBM\n")
     # MARK
     lines += ["<MARK>", ""]
@@ -118,11 +112,7 @@ if main_file:
         lines.append(f"{int(r['포장갯수'])} {format_unit(r['단위'], r['포장갯수'], force_to_pkg)} / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
         # Inject extra mapping if exists
         if hbl in extra_map:
-            info = extra_map[hbl]
-            if info['desc']:
-                lines.append(info['desc'])
-            if info['code']:
-                lines.append(info['code'])
+            lines.append(extra_map[hbl])
         lines.append("")
 
     result = "\n".join(lines)
@@ -131,6 +121,6 @@ if main_file:
 
 if st.sidebar.button("📁 업로드 로그 보기"):
     if os.path.exists("upload_log.txt"):
-        st.sidebar.text_area("업로드 로그", open("upload_log.txt","r",encoding='utf-8').read(),height=300)
+        st.sidebar.text_area("업로드 로그", open("upload_log.txt","r",encoding='utf-8').read(), height=300)
     else:
         st.sidebar.warning("업로드 로그가 아직 없습니다.")
