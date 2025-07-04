@@ -1,4 +1,4 @@
-# Code Version: SRAuto12 - Rename extra_file uploader label
+# Code Version: SRAuto13 - Skip container header in DESC when single container
 import streamlit as st
 import pandas as pd
 import os  # 파일명 추출용
@@ -50,14 +50,12 @@ extra_map = {}
 if extra_file:
     log_uploaded_filename(extra_file.name)
     ex = pd.read_excel(extra_file)
-    # Determine columns: look for 'HBL' and second column
     cols = list(ex.columns)
     hbl_col = cols[0]
     info_col = cols[1] if len(cols) > 1 else None
     for _, row in ex.iterrows():
         hbl = str(row.get(hbl_col, '')).strip()
         info = str(row.get(info_col, '')).strip() if info_col else ''
-        # Only map if HBL exists and info not empty
         if hbl and info:
             extra_map[hbl] = info
 
@@ -104,13 +102,13 @@ if main_file:
         if cur != prev:
             if prev[0] is not None:
                 lines += ["", "", ""]
-            lines.append(f"{cur[0]} / {cur[1]}")
-            lines.append("")
+            if not single:
+                lines.append(f"{cur[0]} / {cur[1]}")
+                lines.append("")
             prev = cur
         hbl = r['House B/L No']
         lines.append(hbl)
         lines.append(f"{int(r['포장갯수'])} {format_unit(r['단위'], r['포장갯수'], force_to_pkg)} / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
-        # Inject extra mapping if exists
         if hbl in extra_map:
             lines.append(extra_map[hbl])
         lines.append("")
