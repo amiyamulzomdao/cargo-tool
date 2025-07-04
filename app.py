@@ -1,4 +1,4 @@
-# Code Version: SRAuto13 - Skip container header in DESC when single container
+# Code Version: SRAuto14 - Ensure skipping container header when single container
 import streamlit as st
 import pandas as pd
 import os  # 파일명 추출용
@@ -102,6 +102,7 @@ if main_file:
         if cur != prev:
             if prev[0] is not None:
                 lines += ["", "", ""]
+            # Skip printing header if only one container
             if not single:
                 lines.append(f"{cur[0]} / {cur[1]}")
                 lines.append("")
