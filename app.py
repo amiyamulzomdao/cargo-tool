@@ -1,4 +1,4 @@
-# Code Version: SRAuto16 - Log in sidebar expander
+# Code Version: SRAuto17 - Log expander collapsed by default
 import streamlit as st
 import pandas as pd
 import os  # 파일명 추출용
@@ -132,7 +132,7 @@ if main_file:
     st.download_button("결과 텍스트 다운로드", result,
                        file_name=os.path.splitext(main_file.name)[0] + ".txt")
 
-# 사이드바에 Log expander
+# 사이드바에 Log expander (기본 접힘)
 with st.sidebar.expander("Log", expanded=False):
     if os.path.exists("upload_log.txt"):
         logs = open("upload_log.txt","r",encoding='utf-8').read()
