@@ -1,4 +1,4 @@
-# Code Version: SRAuto15 - Headerless extra‑mapping & expander
+# Code Version: SRAuto16 - Log in sidebar expander
 import streamlit as st
 import pandas as pd
 import os  # 파일명 추출용
@@ -132,10 +132,10 @@ if main_file:
     st.download_button("결과 텍스트 다운로드", result,
                        file_name=os.path.splitext(main_file.name)[0] + ".txt")
 
-# 간단한 Log 보기
-if st.sidebar.button("Log"):
+# 사이드바에 Log expander
+with st.sidebar.expander("Log", expanded=False):
     if os.path.exists("upload_log.txt"):
         logs = open("upload_log.txt","r",encoding='utf-8').read()
-        st.sidebar.text_area("Log", logs, height=300)
+        st.text_area("Log", logs, height=300)
     else:
-        st.sidebar.warning("Log가 아직 없습니다.")
+        st.warning("Log가 아직 없습니다.")
