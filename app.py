@@ -1,4 +1,4 @@
-# Code Version: 화물4‑rev - ‘품목, HS CODE 추가 (선택)’ expander 및 AS→‘품목’ 컬럼 매핑 수정
+# Code Version: 화물4‑rev2 – ‘품목’ 컬럼 대신 2번째 컬럼(AS 등) 자동 감지
 import streamlit as st
 import pandas as pd
 import os
@@ -6,11 +6,8 @@ import re
 from datetime import datetime
 
 def format_unit(unit, count, force_to_pkg=False):
-    unit_map = {'PK':'PKG','PL':'PLT','CT':'CTN'}
-    if force_to_pkg and unit.upper()=='PL':
-        base = 'PKG'
-    else:
-        base = unit_map.get(unit.upper(), unit.upper())
+    m = {'PK':'PKG','PL':'PLT','CT':'CTN'}
+    base = 'PKG' if (force_to_pkg and unit.upper()=='PL') else m.get(unit.upper(), unit.upper())
     return base+'S' if unit.upper() in ['PK','PL','CT'] and count>1 else base
 
 def format_number(v):
@@ -23,81 +20,81 @@ def log_uploaded_filename(fn):
     if os.path.exists(p):
         lines = open(p,"r",encoding='utf-8').readlines()
         if entry in lines: return
-        mode = 'a'
+        mode='a'
     else:
-        mode = 'w'
+        mode='w'
     with open(p, mode, encoding='utf-8') as f:
         f.write(entry)
 
 # 페이지 설정
-st.set_page_config(page_title="🚢 SR 제출 자동 정리기",
-                   initial_sidebar_state="collapsed")
+st.set_page_config(
+    page_title="🚢 SR 제출 자동 정리기",
+    initial_sidebar_state="collapsed"
+)
 
 # UI 헤더
 st.title("🚢 SR 제출 자동 정리기")
 st.markdown("엑셀 파일 업로드 → SR 정리 + (선택) 품목, HS CODE 추가")
 
-# 옵션: PLT 변환
 force_to_pkg = st.checkbox("코스코 PLT변환")
-
-# 메인 파일 업로드
 main_file = st.file_uploader("메인 엑셀 파일 업로드", type=["xlsx"])
 
-# 품목, HS CODE 추가 expander
+# expander: 매핑 파일 업로드
 extra_map = {}
 with st.expander("품목, HS CODE 추가 (선택)", expanded=False):
-    # HS CODE 내 점 제거 옵션
     hsc_remove = st.checkbox("코스코 HS CODE 점 제거")
     extra_file = st.file_uploader("추가 매핑 파일 업로드", type=["xlsx"], key="extra")
     if extra_file:
         log_uploaded_filename(extra_file.name)
-        ex = pd.read_excel(extra_file)  # 헤더 있는 원본 파일
-        # '품목' 컬럼이 반드시 존재해야 매핑
-        if '품목' not in ex.columns:
-            st.error("매핑 파일에 '품목' 컬럼이 없습니다.")
+        ex = pd.read_excel(extra_file)
+        # 첫 번째 컬럼을 HBL, 두 번째 컬럼을 매핑 텍스트로 사용
+        cols = list(ex.columns)
+        hbl_col  = cols[0]
+        info_col = cols[1] if len(cols)>1 else None
+
+        if info_col is None:
+            st.error("추가 파일에 매핑용 컬럼이 없습니다.")
         else:
-            # 첫 번째 컬럼(예: HBL) 기준으로 매핑
-            hbl_col = ex.columns[0]
             for _, row in ex.iterrows():
                 hbl = str(row[hbl_col]).strip()
-                raw = row['품목']
+                raw = row[info_col]
                 if not hbl or pd.isna(raw):
                     continue
-                # 셀 안의 여러 줄로 분리
-                lines = [ln.strip() for ln in str(raw).splitlines() if ln.strip()]
-                mapped = []
-                for ln in lines:
-                    # HS CODE 접두어가 있는 라인
+                # 셀 내용이 멀티라인이면 줄별로 분리
+                for ln in str(raw).splitlines():
+                    ln = ln.strip()
+                    if not ln:
+                        continue
+                    # HS CODE 접두어나 순수 숫자 코드 처리
                     if ln.upper().startswith("HS CODE"):
                         code = ln.split(None,2)[-1]
                         if hsc_remove:
                             code = code.replace('.','')
-                        mapped.append(f"HS CODE {code}")
-                    # 순수 숫자 포맷 HS CODE
+                        info = f"HS CODE {code}"
                     elif re.fullmatch(r"[0-9]+(?:\.[0-9]+)?", ln):
                         code = ln.replace('.','') if hsc_remove else ln
-                        mapped.append(f"HS CODE {code}")
+                        info = f"HS CODE {code}"
                     else:
-                        mapped.append(ln)
-                if mapped:
-                    extra_map[hbl] = mapped
+                        info = ln
+                    extra_map.setdefault(hbl, []).append(info)
 
-# 메인 로직
 if main_file:
     log_uploaded_filename(main_file.name)
     df = pd.read_excel(main_file)
-    df = df[['House B/L No','컨테이너 번호','Seal#1','포장갯수',
-             '단위','Weight','Measure']].copy()
+    df = df[['House B/L No','컨테이너 번호','Seal#1','포장갯수','단위','Weight','Measure']].copy()
     df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
 
+    # SUMMARY
     total = df.groupby(['컨테이너 번호','Seal#1']).agg(
         포장갯수=('포장갯수','sum'),
         Weight=('Weight','sum'),
-        Measure=('Measure','sum'),
+        Measure=('Measure','sum')
     ).reset_index()
+    # MARK
     marks = df.groupby(['컨테이너 번호','Seal#1'])['House B/L No']\
               .unique().reset_index()
-    desc  = df.groupby(['컨테이너 번호','Seal#1','House B/L No']).agg(
+    # DESC
+    desc = df.groupby(['컨테이너 번호','Seal#1','House B/L No']).agg(
         포장갯수=('포장갯수','sum'),
         단위=('단위','first'),
         Weight=('Weight','sum'),
@@ -105,14 +102,18 @@ if main_file:
     ).reset_index().sort_values(
         ['컨테이너 번호','Seal#1','House B/L No']
     )
-    single = (len(total) == 1)
+    single = (len(total)==1)
 
     lines = []
-    # SUMMARY
+    # SUMMARY block
     for _, r in total.iterrows():
-        pkg = int(r['포장갯수']); w = format_number(r['Weight']); m = format_number(r['Measure'])
-        lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}\n"
-                     f"TOTAL: {pkg} PKGS / {w} KG / {m} CBM\n")
+        pkg = int(r['포장갯수'])
+        w   = format_number(r['Weight'])
+        m   = format_number(r['Measure'])
+        lines.append(
+            f"{r['컨테이너 번호']} / {r['Seal#1']}\n"
+            f"TOTAL: {pkg} PKGS / {w} KG / {m} CBM\n"
+        )
 
     # <MARK>
     lines += ["<MARK>", ""]
@@ -124,12 +125,11 @@ if main_file:
 
     # <DESC>
     lines += ["<DESC>", ""]
-    prev = (None, None)
+    prev = (None,None)
     for _, r in desc.iterrows():
         cur = (r['컨테이너 번호'], r['Seal#1'])
-        if cur != prev:
-            if prev[0] is not None:
-                lines += ["", "", ""]
+        if cur!=prev:
+            if prev[0] is not None: lines+=["","",""]
             if not single:
                 lines.append(f"{cur[0]} / {cur[1]}"); lines.append("")
             prev = cur
@@ -142,18 +142,20 @@ if main_file:
             f"{format_number(r['Weight'])} KGS / "
             f"{format_number(r['Measure'])} CBM"
         )
-        # 매핑 정보 삽입
+        # extra_map 매핑 정보 삽입
         for info in extra_map.get(hbl, []):
             lines.append(info)
         lines.append("")
 
     result = "\n".join(lines)
     st.text_area("📋 결과 출력:", result, height=600)
-    st.download_button("결과 텍스트 다운로드",
-                       result,
-                       file_name=f"{os.path.splitext(main_file.name)[0]}.txt")
+    st.download_button(
+        "결과 텍스트 다운로드",
+        result,
+        file_name=f"{os.path.splitext(main_file.name)[0]}.txt"
+    )
 
-# Sidebar Log 버튼
+# Sidebar: Log button
 if st.sidebar.button("Log"):
     if os.path.exists("upload_log.txt"):
         logs = open("upload_log.txt","r",encoding='utf-8').read()
