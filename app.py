@@ -34,7 +34,7 @@ st.set_page_config(
 
 # UI 헤더
 st.title("🚢 SR 제출 자동 정리기")
-st.markdown("엑셀 파일을 업로드하면 컨테이너별로 정리해드려요")
+st.markdown("엑셀 파일을 업로드하면 컨테이너별로 정리해드려요(칼퇴기원✨)")
 
 force_to_pkg = st.checkbox("코스코 PLT변환")
 main_file = st.file_uploader("메인 엑셀 파일 업로드", type=["xlsx"])
