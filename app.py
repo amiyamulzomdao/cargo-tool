@@ -1,12 +1,8 @@
-# Code Version: SRAuto18 – Sidebar collapsed by default & Log button restored
+# Code Version: SRAuto19 - Extra mapping in collapsed expander
 import streamlit as st
 import pandas as pd
 import os
 from datetime import datetime
-
-# 페이지 설정: 사이드바는 기본적으로 접힘
-st.set_page_config(page_title="🚢 SR 제출 자동 정리기",
-                   initial_sidebar_state="collapsed")
 
 def format_unit(unit, count, force_to_pkg=False):
     unit_map = {'PK': 'PKG', 'PL': 'PLT', 'CT': 'CTN'}
@@ -36,25 +32,28 @@ def log_uploaded_filename(file_name):
             with open(log_path, 'a', encoding='utf-8') as f:
                 f.write(entry)
 
-# --- UI ---
+# 페이지 설정
+st.set_page_config(page_title="🚢 SR 제출 자동 정리기",
+                   initial_sidebar_state="collapsed")
+
+# UI
 st.title("🚢 SR 제출 자동 정리기")
 st.markdown("엑셀 파일을 업로드하면 컨테이너별 마크 및 디스크립션을 정리해드립니다.")
 force_to_pkg = st.checkbox("코스코 PLT변환")
 main_file = st.file_uploader("메인 엑셀 파일 업로드", type=["xlsx"])
 
-# 추가 매핑(expander로 숨기지 않고, 원래대로)
+# expander for extra mapping
 extra_map = {}
-st.markdown("---")
-st.markdown("**품목, HS CODE 추가 (선택)**")
-extra_file = st.file_uploader("", type=["xlsx"], key="extra")
-if extra_file:
-    log_uploaded_filename(extra_file.name)
-    ex = pd.read_excel(extra_file, header=None)
-    for _, row in ex.iterrows():
-        hbl  = str(row[0]).strip()
-        info = str(row[1]).strip() if len(row) > 1 else ''
-        if hbl and info:
-            extra_map[hbl] = info
+with st.expander("품목, HS CODE 추가 (선택)", expanded=False):
+    extra_file = st.file_uploader("추가 엑셀 파일 업로드", type=["xlsx"], key="extra")
+    if extra_file:
+        log_uploaded_filename(extra_file.name)
+        ex = pd.read_excel(extra_file, header=None)
+        for _, row in ex.iterrows():
+            hbl  = str(row[0]).strip()
+            info = str(row[1]).strip() if len(row) > 1 else ''
+            if hbl and info:
+                extra_map[hbl] = info
 
 if main_file:
     log_uploaded_filename(main_file.name)
@@ -79,9 +78,7 @@ if main_file:
     lines = []
     # SUMMARY
     for _, r in total.iterrows():
-        pkg = int(r['포장갯수'])
-        w   = format_number(r['Weight'])
-        m   = format_number(r['Measure'])
+        pkg = int(r['포장갯수']); w = format_number(r['Weight']); m = format_number(r['Measure'])
         lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}\nTOTAL: {pkg} PKGS / {w} KG / {m} CBM\n")
 
     # <MARK>
@@ -119,7 +116,7 @@ if main_file:
     st.download_button("결과 텍스트 다운로드", result,
                        file_name=os.path.splitext(main_file.name)[0] + ".txt")
 
-# 사이드바에 Log 버튼 (원래대로)
+# Sidebar Log button
 if st.sidebar.button("Log"):
     if os.path.exists("upload_log.txt"):
         logs = open("upload_log.txt","r",encoding='utf-8').read()
