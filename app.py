@@ -104,12 +104,12 @@ if main_file:
     )
     single = (len(total)==1)
 
-# TOTAL summary for all containers
-grand_total_pkg = int(df['포장갯수'].sum())
-grand_total_w   = format_number(df['Weight'].sum())
-grand_total_m   = format_number(df['Measure'].sum())
-lines.append(f"TOTAL: {grand_total_pkg} PKGS / {grand_total_w} KGS / {grand_total_m} CBM")
-lines.append("")  # 줄 바꿈
+    # TOTAL summary for all containers
+    grand_total_pkg = int(df['포장갯수'].sum())
+    grand_total_w   = format_number(df['Weight'].sum())
+    grand_total_m   = format_number(df['Measure'].sum())
+    lines.append(f"TOTAL: {grand_total_pkg} PKGS / {grand_total_w} KGS / {grand_total_m} CBM")
+    lines.append("")  # 줄 바꿈
 
     lines = []
     # SUMMARY block
