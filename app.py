@@ -1,4 +1,4 @@
-# Code Version: 화물4‑rev2 + 전체토탈추가
+# Code Version: 화물4‑rev2 – ‘품목’ 컬럼 대신 2번째 컬럼(AS 등) 자동 감지
 import streamlit as st
 import pandas as pd
 import os
@@ -47,9 +47,11 @@ with st.expander("품목, HS CODE 추가 (선택)", expanded=False):
     if extra_file:
         log_uploaded_filename(extra_file.name)
         ex = pd.read_excel(extra_file)
+        # 첫 번째 컬럼을 HBL, 두 번째 컬럼을 매핑 텍스트로 사용
         cols = list(ex.columns)
         hbl_col  = cols[0]
         info_col = cols[1] if len(cols)>1 else None
+
         if info_col is None:
             st.error("추가 파일에 매핑용 컬럼이 없습니다.")
         else:
@@ -58,10 +60,12 @@ with st.expander("품목, HS CODE 추가 (선택)", expanded=False):
                 raw = row[info_col]
                 if not hbl or pd.isna(raw):
                     continue
+                # 셀 내용이 멀티라인이면 줄별로 분리
                 for ln in str(raw).splitlines():
                     ln = ln.strip()
                     if not ln:
                         continue
+                    # HS CODE 접두어나 순수 숫자 코드 처리
                     if ln.upper().startswith("HS CODE"):
                         code = ln.split(None,2)[-1]
                         if hsc_remove:
@@ -80,32 +84,28 @@ if main_file:
     df = df[['House B/L No','컨테이너 번호','Seal#1','포장갯수','단위','Weight','Measure']].copy()
     df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
 
+    # SUMMARY
     total = df.groupby(['컨테이너 번호','Seal#1']).agg(
         포장갯수=('포장갯수','sum'),
         Weight=('Weight','sum'),
         Measure=('Measure','sum')
     ).reset_index()
-    marks = df.groupby(['컨테이너 번호','Seal#1'])['House B/L No'].unique().reset_index()
+    # MARK
+    marks = df.groupby(['컨테이너 번호','Seal#1'])['House B/L No']\
+              .unique().reset_index()
+    # DESC
     desc = df.groupby(['컨테이너 번호','Seal#1','House B/L No']).agg(
         포장갯수=('포장갯수','sum'),
         단위=('단위','first'),
         Weight=('Weight','sum'),
-        Measure=('Measure','sum')
-    ).reset_index().sort_values(['컨테이너 번호','Seal#1','House B/L No'])
+        Measure=('Measure','sum'),
+    ).reset_index().sort_values(
+        ['컨테이너 번호','Seal#1','House B/L No']
+    )
     single = (len(total)==1)
 
-    # ─── 여기를 바꿔서 전체 TOTAL을 맨 위에 추가합니다 ───
-    # SUMMARY block 시작 전에 전체 컨테이너 합계 출력
-    grand_total_pkg = int(df['포장갯수'].sum())
-    grand_total_w   = format_number(df['Weight'].sum())
-    grand_total_m   = format_number(df['Measure'].sum())
-    lines = [
-        f"TOTAL: {grand_total_pkg} PKGS / {grand_total_w} KGS / {grand_total_m} CBM",
-        ""
-    ]
-    # ─────────────────────────────────────────────────────────────
-
-    # 기존 SUMMARY block
+    lines = []
+    # SUMMARY block
     for _, r in total.iterrows():
         pkg = int(r['포장갯수'])
         w   = format_number(r['Weight'])
@@ -142,6 +142,7 @@ if main_file:
             f"{format_number(r['Weight'])} KGS / "
             f"{format_number(r['Measure'])} CBM"
         )
+        # extra_map 매핑 정보 삽입
         for info in extra_map.get(hbl, []):
             lines.append(info)
         lines.append("")
