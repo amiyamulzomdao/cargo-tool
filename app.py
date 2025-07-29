@@ -1,4 +1,4 @@
-# Code Version: 화물4‑rev2 + 전체토탈 상단 출력
+# Code Version: 화물4‑rev2 + 전체토탈 상단만 추가 (UI 그대로 유지)
 import streamlit as st
 import pandas as pd
 import os
@@ -26,17 +26,20 @@ def log_uploaded_filename(fn):
     with open(p, mode, encoding='utf-8') as f:
         f.write(entry)
 
+# 페이지 설정
 st.set_page_config(
     page_title="🚢 SR 제출 자동 정리기",
     initial_sidebar_state="collapsed"
 )
 
+# UI 헤더 (원본 그대로)
 st.title("🚢 SR 제출 자동 정리기")
-st.markdown("엑셀 파일을 업로드하면 컨테이너별로 정리해드려요")
+st.markdown("엑셀 파일을 업로드하면 컨테이너별로 정리해드려요(칼퇴기원✨)")
 
 force_to_pkg = st.checkbox("코스코 PLT변환")
 main_file = st.file_uploader("메인 엑셀 파일 업로드", type=["xlsx"])
 
+# expander: 매핑 파일 업로드
 extra_map = {}
 with st.expander("품목, HS CODE 추가 (선택)", expanded=False):
     hsc_remove = st.checkbox("코스코 HS CODE 점 제거")
@@ -71,6 +74,15 @@ with st.expander("품목, HS CODE 추가 (선택)", expanded=False):
                         info = ln
                     extra_map.setdefault(hbl, []).append(info)
 
+# 로그 expander (원본 그대로)
+with st.expander("📄 Log", expanded=False):
+    if os.path.exists("upload_log.txt"):
+        with open("upload_log.txt","r",encoding='utf-8') as f:
+            logs = f.read()
+        st.text_area("업로드 기록", logs, height=300)
+    else:
+        st.write("업로드 기록이 없습니다.")
+
 if main_file:
     log_uploaded_filename(main_file.name)
     df = pd.read_excel(main_file)
@@ -82,16 +94,19 @@ if main_file:
         Weight=('Weight','sum'),
         Measure=('Measure','sum')
     ).reset_index()
-    marks = df.groupby(['컨테이너 번호','Seal#1'])['House B/L No'].unique().reset_index()
-    desc  = df.groupby(['컨테이너 번호','Seal#1','House B/L No']).agg(
+    marks = df.groupby(['컨테이너 번호','Seal#1'])['House B/L No']\
+              .unique().reset_index()
+    desc = df.groupby(['컨테이너 번호','Seal#1','House B/L No']).agg(
         포장갯수=('포장갯수','sum'),
         단위=('단위','first'),
         Weight=('Weight','sum'),
         Measure=('Measure','sum')
-    ).reset_index().sort_values(['컨테이너 번호','Seal#1','House B/L No'])
+    ).reset_index().sort_values(
+        ['컨테이너 번호','Seal#1','House B/L No']
+    )
     single = (len(total) == 1)
 
-    # ◉ 전체 컨테이너 합산 TOTAL 상단 출력
+    # ────────── 여기만 추가된 부분: 전체 컨테이너 합산 TOTAL ──────────
     grand_pkg = int(total['포장갯수'].sum())
     grand_w   = format_number(total['Weight'].sum())
     grand_m   = format_number(total['Measure'].sum())
@@ -99,6 +114,7 @@ if main_file:
         f"TOTAL: {grand_pkg} PKGS / {grand_w} KGS / {grand_m} CBM",
         ""
     ]
+    # ────────────────────────────────────────────────────────────────
 
     # SUMMARY block (개별 컨테이너)
     for _, r in total.iterrows():
@@ -110,6 +126,7 @@ if main_file:
             f"TOTAL: {pkg} PKGS / {w} KG / {m} CBM\n"
         )
 
+    # <MARK>
     lines += ["<MARK>", ""]
     for _, r in marks.iterrows():
         if not single:
@@ -117,28 +134,33 @@ if main_file:
         lines += sorted(r['House B/L No']); lines.append("")
     lines.append("")
 
+    # <DESC>
     lines += ["<DESC>", ""]
-    prev = (None, None)
+    prev = (None,None)
     for _, r in desc.iterrows():
         cur = (r['컨테이너 번호'], r['Seal#1'])
         if cur != prev:
             if prev[0] is not None:
-                lines += ["", "", ""]
+                lines += ["","",""]
             if not single:
                 lines.append(f"{cur[0]} / {cur[1]}"); lines.append("")
             prev = cur
 
-        lines.append(r['House B/L No'])
+        hbl = r['House B/L No']
+        lines.append(hbl)
         lines.append(
             f"{int(r['포장갯수'])} "
-            f"{format_unit(r['단위'], r['포장갯수'], force_to_pkg)} / "
+            f"{format_unit(r['단위'],r['포장갯수'],force_to_pkg)} / "
             f"{format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM"
         )
-        for info in extra_map.get(r['House B/L No'], []):
+        for info in extra_map.get(hbl, []):
             lines.append(info)
         lines.append("")
 
     result = "\n".join(lines)
     st.text_area("📋 결과 출력:", result, height=600)
-    st.download_button("결과 텍스트 다운로드", result,
-                       file_name=os.path.splitext(main_file.name)[0] + ".txt")
+    st.download_button(
+        "결과 텍스트 다운로드",
+        result,
+        file_name=f"{os.path.splitext(main_file.name)[0]}.txt"
+    )
