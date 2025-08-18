@@ -1,4 +1,3 @@
-# Code Version: 화물4‑rev2 – ‘품목’ 컬럼 대신 2번째 컬럼(AS 등) 자동 감지
 import streamlit as st
 import pandas as pd
 import os
@@ -93,7 +92,7 @@ if main_file:
     # MARK
     marks = df.groupby(['컨테이너 번호','Seal#1'])['House B/L No']\
               .unique().reset_index()
-    # DESC
+    # DESCRIPTION
     desc = df.groupby(['컨테이너 번호','Seal#1','House B/L No']).agg(
         포장갯수=('포장갯수','sum'),
         단위=('단위','first'),
@@ -112,7 +111,7 @@ if main_file:
         m   = format_number(r['Measure'])
         lines.append(
             f"{r['컨테이너 번호']} / {r['Seal#1']}\n"
-            f"TOTAL: {pkg} PKGS / {w} KG / {m} CBM\n"
+            f"TOTAL: {pkg} PKGS / {w} KGS / {m} CBM\n"
         )
 
     # <MARK>
@@ -123,8 +122,8 @@ if main_file:
         lines += sorted(r['House B/L No']); lines.append("")
     lines.append("")
 
-    # <DESC>
-    lines += ["<DESC>", ""]
+    # <DESCRIPTION>
+    lines += ["<DESCRIPTION>", ""]
     prev = (None,None)
     for _, r in desc.iterrows():
         cur = (r['컨테이너 번호'], r['Seal#1'])
