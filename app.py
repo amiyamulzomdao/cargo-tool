@@ -60,7 +60,7 @@ with tab1:
             lines = []
             single = (len(total) == 1)
 
-            if len(total) >= 2:
+            if not single:
                 g_p = int(total['포장갯수'].sum())
                 g_w = format_number(total['Weight'].sum())
                 g_m = format_number(total['Measure'].sum())
@@ -76,22 +76,25 @@ with tab1:
                 lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
                 lines.append(f"TOTAL: {pkg} PKGS / {w} KGS / {m} CBM\n")
 
-            # <MARK> 섹션
+            # <MARK> 섹션 (요청하신 로직대로 교정)
             lines += ["<MARK>", ""]
             for _, r in marks.iterrows():
-                # 컨테이너 정보 출력
+                # 1. 컨테이너 정보 출력
                 lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
                 
-                # 요청하신 대로 컨테이너가 1대일 때 번호와 하우스번호 사이 빈 줄 추가
-                if single:
-                    lines.append("") 
+                # 2. 컨테이너와 하우스 번호 사이는 '무조건' 한 칸 띄움
+                lines.append("") 
                 
-                for hbl in sorted(r['House B/L No']):
+                # 3. 하우스 번호들 출력
+                hbl_list = sorted(r['House B/L No'])
+                for hbl in hbl_list:
                     lines.append(hbl)
-                    if single: 
+                    # 4. '1대일 때만' 하우스 번호들 사이사이에 빈 줄 추가
+                    if single:
                         lines.append("")
                 
-                if not single: 
+                # 5. 여러 대일 때 뭉치 구분을 위해 마지막에 빈 줄 추가
+                if not single:
                     lines.append("")
             lines.append("")
 
@@ -121,7 +124,7 @@ with tab1:
 
             result = "\n".join(lines)
 
-        with col_res:
+        with col_result:
             res_c1, res_c2 = st.columns([2, 1])
             with res_c1:
                 st.subheader("정리 결과")
