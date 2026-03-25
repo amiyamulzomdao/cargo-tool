@@ -38,45 +38,7 @@ st.markdown("엑셀 파일을 업로드하면 컨테이너별로 정리해드려
 force_to_pkg = st.checkbox("코스코 PLT변환")
 main_file = st.file_uploader("메인 엑셀 파일 업로드", type=["xlsx"])
 
-# expander: 매핑 파일 업로드
-extra_map = {}
-with st.expander("품목, HS CODE 추가 (선택)", expanded=False):
-    hsc_remove = st.checkbox("코스코 HS CODE 점 제거")
-    extra_file = st.file_uploader("추가 매핑 파일 업로드", type=["xlsx"], key="extra")
-    if extra_file:
-        log_uploaded_filename(extra_file.name)
-        ex = pd.read_excel(extra_file)
-        # 첫 번째 컬럼을 HBL, 두 번째 컬럼을 매핑 텍스트로 사용
-        cols = list(ex.columns)
-        hbl_col  = cols[0]
-        info_col = cols[1] if len(cols)>1 else None
-
-        if info_col is None:
-            st.error("추가 파일에 매핑용 컬럼이 없습니다.")
-        else:
-            for _, row in ex.iterrows():
-                hbl = str(row[hbl_col]).strip()
-                raw = row[info_col]
-                if not hbl or pd.isna(raw):
-                    continue
-                # 셀 내용이 멀티라인이면 줄별로 분리
-                for ln in str(raw).splitlines():
-                    ln = ln.strip()
-                    if not ln:
-                        continue
-                    # HS CODE 접두어나 순수 숫자 코드 처리
-                    if ln.upper().startswith("HS CODE"):
-                        code = ln.split(None,2)[-1]
-                        if hsc_remove:
-                            code = code.replace('.','')
-                        info = f"HS CODE {code}"
-                    elif re.fullmatch(r"[0-9]+(?:\.[0-9]+)?", ln):
-                        code = ln.replace('.','') if hsc_remove else ln
-                        info = f"HS CODE {code}"
-                    else:
-                        info = ln
-                    extra_map.setdefault(hbl, []).append(info)
-
+# 메인 파일 처리 로직
 if main_file:
     log_uploaded_filename(main_file.name)
     df = pd.read_excel(main_file)
@@ -89,9 +51,11 @@ if main_file:
         Weight=('Weight','sum'),
         Measure=('Measure','sum')
     ).reset_index()
+    
     # MARK
     marks = df.groupby(['컨테이너 번호','Seal#1'])['House B/L No']\
               .unique().reset_index()
+              
     # DESCRIPTION
     desc = df.groupby(['컨테이너 번호','Seal#1','House B/L No']).agg(
         포장갯수=('포장갯수','sum'),
@@ -141,9 +105,7 @@ if main_file:
             f"{format_number(r['Weight'])} KGS / "
             f"{format_number(r['Measure'])} CBM"
         )
-        # extra_map 매핑 정보 삽입
-        for info in extra_map.get(hbl, []):
-            lines.append(info)
+        # 매핑 정보 삭제로 인해 extra_map 관련 반복문 제거됨
         lines.append("")
 
     result = "\n".join(lines)
