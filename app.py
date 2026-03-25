@@ -7,7 +7,7 @@ def format_unit(unit, count, force_to_pkg=False):
     u_str = str(unit).upper() if pd.notna(unit) else "PKG"
     m = {'PK':'PKG', 'PL':'PLT', 'CT':'CTN'}
     base = 'PKG' if (force_to_pkg and u_str == 'PL') else m.get(u_str, u_str)
-    if u_str in ['PK','PL','CT'] and count > 1:
+    if u_str in ['PK', 'PL', 'CT'] and count > 1:
         return base + 'S'
     return base
 
@@ -47,47 +47,45 @@ with tab1:
             log_uploaded_filename(main_file.name)
             df = pd.read_excel(main_file)
             
-            # 필수 컬럼 정리
-            cols = ['House B/L No','컨테이너 번호','Seal#1','포장갯수','단위','Weight','Measure']
+            cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
             df = df[cols].copy()
             df = df.dropna(subset=['House B/L No'])
             
-            # GT 단위 체크
             has_gt = df['단위'].fillna('').astype(str).str.upper().str.contains('GT').any()
-            
             df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
             df['단위'] = df['단위'].fillna('PKG')
 
-            # 그룹화 계산
-            total = df.groupby(['컨테이너 번호','Seal#1']).agg(
-                포장갯수=('포장갯수','sum'),
-                Weight=('Weight','sum'),
-                Measure=('Measure','sum')
+            total = df.groupby(['컨테이너 번호', 'Seal#1']).agg(
+                포장갯수=('포장갯수', 'sum'),
+                Weight=('Weight', 'sum'),
+                Measure=('Measure', 'sum')
             ).reset_index()
             
-            marks = df.groupby(['컨테이너 번호','Seal#1'])['House B/L No'].unique().reset_index()
-            desc_df = df.sort_values(['컨테이너 번호','Seal#1','House B/L No'])
+            marks = df.groupby(['컨테이너 번호', 'Seal#1'])['House B/L No'].unique().reset_index()
+            desc_df = df.sort_values(['컨테이너 번호', 'Seal#1', 'House B/L No'])
             
             lines = []
             single = (len(total) == 1)
 
-            # [GRAND TOTAL]
+            # [GRAND TOTAL] 섹션 - 가변 구분선 적용
             if not single:
                 g_p = int(total['포장갯수'].sum())
                 g_w = format_number(total['Weight'].sum())
                 g_m = format_number(total['Measure'].sum())
+                
+                total_line = f"TOTAL: {g_p} PKGS / {g_w} KGS / {g_m} CBM"
+                
                 lines.append("[GRAND TOTAL]")
-                lines.append(f"TOTAL: {g_p} PKGS / {g_w} KGS / {g_m} CBM")
-                lines.append("-" * 30)
+                lines.append(total_line)
+                # 위 문장의 길이에 맞춰 '-' 개수 조절
+                lines.append("-" * len(total_line))
                 lines.append("")
 
-            # 컨테이너별 요약
             for _, r in total.iterrows():
                 p, w, m = int(r['포장갯수']), format_number(r['Weight']), format_number(r['Measure'])
                 lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
                 lines.append(f"TOTAL: {p} PKGS / {w} KGS / {m} CBM\n")
 
-            # <MARK> 섹션
             lines += ["<MARK>", ""]
             for _, r in marks.iterrows():
                 lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
@@ -98,15 +96,13 @@ with tab1:
                 if not single: lines.append("")
             lines.append("")
 
-            # <DESCRIPTION> 섹션
             lines += ["<DESCRIPTION>", ""]
             prev = (None, None)
             for _, r in desc_df.iterrows():
                 cur = (r['컨테이너 번호'], r['Seal#1'])
                 if cur != prev:
                     if prev[0] is not None:
-                        lines.append("")
-                        lines.append("")
+                        lines.append(""), lines.append("")
                     if not single:
                         lines.append(f"{cur[0]} / {cur[1]}")
                         lines.append("")
@@ -121,7 +117,6 @@ with tab1:
 
             result = "\n".join(lines)
 
-            # 오른쪽 결과창
             with col_res:
                 r_c1, r_c2 = st.columns([2, 1])
                 with r_c1: st.subheader("정리 결과")
