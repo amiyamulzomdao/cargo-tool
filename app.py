@@ -10,8 +10,11 @@ def format_unit(unit, count, force_to_pkg=False):
     return base + 'S' if u_str in ['PK','PL','CT'] and count > 1 else base
 
 def format_number(v):
-    t = f"{round(v, 3):.3f}"
-    return t.rstrip('0').rstrip('.') if '.' in t else t
+    try:
+        t = f"{round(float(v), 3):.3f}"
+        return t.rstrip('0').rstrip('.') if '.' in t else t
+    except:
+        return str(v)
 
 def log_uploaded_filename(fn):
     p = "upload_log.txt"
@@ -30,13 +33,11 @@ with tab1:
     main_file = st.file_uploader("엑셀 파일을 업로드하세요 (xlsx)", type=["xlsx"])
 
     if main_file:
+        # 화면 분할 (입력 1 : 결과 1.5)
         col_in, col_res = st.columns([1, 1.5])
         
-        with col_in:
-            st.subheader("설정 및 정보")
-            force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환")
-            st.info(f"파일: {main_file.name}")
-            
+        # 데이터 처리 (오류 방지를 위해 미리 수행)
+        try:
             log_uploaded_filename(main_file.name)
             df = pd.read_excel(main_file)
             
@@ -44,8 +45,8 @@ with tab1:
             df = df[target_cols].copy()
             df = df.dropna(subset=['House B/L No'])
             
-            # GT 단위 존재 여부 확인
-            has_gt_unit = df['단위'].astype(str).str.upper().str.contains('GT').any()
+            # GT 단위 체크 (안전한 방식)
+            has_gt_unit = df['단위'].fillna('').astype(str).str.upper().str.contains('GT').any()
             
             df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
             df['단위'] = df['단위'].fillna('PKG')
@@ -68,8 +69,7 @@ with tab1:
                 g_w = format_number(total['Weight'].sum())
                 g_m = format_number(total['Measure'].sum())
                 lines.append("[GRAND TOTAL]")
-                gt_text = f"TOTAL: {g_p} PKGS / {g_w} KGS / {g_m} CBM"
-                lines.append(gt_text)
+                lines.append(f"TOTAL: {g_p} PKGS / {g_w} KGS / {g_m} CBM")
                 lines.append("-" * 30)
                 lines.append("")
 
@@ -84,14 +84,11 @@ with tab1:
             for _, r in marks.iterrows():
                 lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
                 lines.append("") 
-                
                 hbl_list = sorted(r['House B/L No'])
                 for hbl in hbl_list:
                     lines.append(hbl)
-                    if single:
-                        lines.append("")
-                if not single:
-                    lines.append("")
+                    if single: lines.append("")
+                if not single: lines.append("")
             lines.append("")
 
             lines += ["<DESCRIPTION>", ""]
@@ -100,13 +97,58 @@ with tab1:
                 cur = (r['컨테이너 번호'], r['Seal#1'])
                 if cur != prev:
                     if prev[0] is not None:
-                        lines.append("")
-                        lines.append("")
+                        lines.append(""); lines.append("")
                     if not single:
                         lines.append(f"{cur[0]} / {cur[1]}")
                         lines.append("")
                     prev = cur
-
+                
                 h_no = r['House B/L No']
                 p_val = int(r['포장갯수'])
                 u_val = format_unit(r['단위'], r['포장갯수'], force_to_pkg)
+                w_val = format_number(r['Weight'])
+                m_val = format_number(r['Measure'])
+                lines.append(f"{h_no}")
+                lines.append(f"{p_val} {u_val} / {w_val} KGS / {m_val} CBM")
+                lines.append("")
+
+            result = "\n".join(lines)
+
+            # 왼쪽 컬럼 출력
+            with col_in:
+                st.subheader("설정 및 정보")
+                force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환")
+                st.info(f"파일: {main_file.name}")
+
+            # 오른쪽 컬럼 출력 (이제 데이터가 확실히 준비된 후 출력)
+            with col_res:
+                r_c1, r_c2 = st.columns([2, 1])
+                with r_c1: st.subheader("정리 결과")
+                with r_c2:
+                    st.download_button(
+                        label="💾 메모장 다운로드",
+                        data=result,
+                        file_name=f"SR_{main_file.name.split('.')[0]}.txt",
+                        use_container_width=True
+                    )
+                
+                if has_gt_unit:
+                    st.error("⚠️ *GT 단위가 있습니다. 데이터 확인이 필요합니다.*")
+                
+                st.text_area("결과 데이터", result, height=600, label_visibility="collapsed")
+
+        except Exception as e:
+            st.error(f"파일 처리 중 오류가 발생했습니다: {e}")
+            
+    else:
+        st.write("---")
+        st.info("엑셀파일을 업로드 해주세요.")
+
+with tab2:
+    st.subheader("업로드 이력")
+    if os.path.exists("upload_log.txt"):
+        with open("upload_log.txt", "r", encoding='utf-8') as f:
+            logs = f.read()
+        st.text_area("로그 데이터", logs, height=400)
+    else:
+        st.write("기록이 없습니다.")
