@@ -67,17 +67,14 @@ with tab1:
             lines = []
             single = (len(total) == 1)
 
-            # [GRAND TOTAL] 섹션 - 시각적 보정을 위해 +10칸 추가
+            # [GRAND TOTAL] 섹션
             if not single:
                 g_p = int(total['포장갯수'].sum())
                 g_w = format_number(total['Weight'].sum())
                 g_m = format_number(total['Measure'].sum())
-                
                 total_line = f"TOTAL: {g_p} PKGS / {g_w} KGS / {g_m} CBM"
-                
                 lines.append("[GRAND TOTAL]")
                 lines.append(total_line)
-                # 시각적으로 넉넉해 보이도록 글자 수보다 10칸 더 긋기
                 lines.append("-" * (len(total_line) + 10))
                 lines.append("")
 
@@ -102,7 +99,9 @@ with tab1:
                 cur = (r['컨테이너 번호'], r['Seal#1'])
                 if cur != prev:
                     if prev[0] is not None:
-                        lines.append(""), lines.append("")
+                        # 수정: None 잔상을 방지하기 위해 각각 한 줄씩 작성
+                        lines.append("")
+                        lines.append("")
                     if not single:
                         lines.append(f"{cur[0]} / {cur[1]}")
                         lines.append("")
