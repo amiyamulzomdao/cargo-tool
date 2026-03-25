@@ -41,7 +41,7 @@ with tab1:
             df = pd.read_excel(main_file)
             df = df[['House B/L No','컨테이너 번호','Seal#1','포장갯수','단위','Weight','Measure']].copy()
             
-            # 오류 수정된 부분: .str.split() 으로 변경
+            # Seal 번호 정제 (.str.split 사용)
             df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
 
             # 데이터 계산
@@ -66,7 +66,7 @@ with tab1:
                 lines.append("-" * 30)
                 lines.append("")
 
-            # SUMMARY block
+            # SUMMARY 섹션
             for _, r in total.iterrows():
                 pkg = int(r['포장갯수'])
                 w = format_number(r['Weight'])
@@ -88,10 +88,35 @@ with tab1:
             for _, r in desc.iterrows():
                 cur = (r['컨테이너 번호'], r['Seal#1'])
                 if cur != prev:
-                    if prev[0] is not None: lines += ["", ""]
+                    if prev[0] is not None:
+                        lines += ["", ""]
                     if not single:
                         lines.append(f"{cur[0]} / {cur[1]}")
                         lines.append("")
                     prev = cur
 
-                lines.append(r['House B
+                # 이 부분에서 SyntaxError가 나지 않도록 정확히 작성했습니다.
+                hbl_no = r['House B/L No']
+                pkg_val = int(r['포장갯수'])
+                unit_val = format_unit(r['단위'], r['포장갯수'], force_to_pkg)
+                weight_val = format_number(r['Weight'])
+                measure_val = format_number(r['Measure'])
+
+                lines.append(f"{hbl_no}")
+                lines.append(f"{pkg_val} {unit_val} / {weight_val} KGS / {measure_val} CBM")
+                lines.append("")
+
+            result = "\n".join(lines)
+            st.success("정리가 완료되었습니다!")
+            st.text_area("📋 결과 (복사해서 사용하세요):", result, height=500)
+            st.download_button("텍스트 파일로 저장", result, file_name=f"SR_{main_file.name.split('.')[0]}.txt")
+
+with tab2:
+    st.subheader("최근 업로드 이력")
+    if os.path.exists("upload_log.txt"):
+        with open("upload_log.txt", "r", encoding='utf-8') as f:
+            logs = f.read()
+        st.text_area("로그 내역 (시간 기록됨)", logs, height=400)
+        st.download_button("로그 파일 다운로드", logs, file_name="sr_upload_log.txt")
+    else:
+        st.info("아직 기록된 로그가 없습니다.")
