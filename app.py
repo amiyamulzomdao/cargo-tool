@@ -4,9 +4,12 @@ import os
 from datetime import datetime
 
 def format_unit(unit, count, force_to_pkg=False):
+    # 단위가 비어있을 경우(NaN)를 대비해 처리
+    u_str = str(unit).upper() if pd.notna(unit) else "PKG"
     m = {'PK':'PKG','PL':'PLT','CT':'CTN'}
-    base = 'PKG' if (force_to_pkg and unit.upper()=='PL') else m.get(unit.upper(), unit.upper())
-    return base+'S' if unit.upper() in ['PK','PL','CT'] and count>1 else base
+    
+    base = 'PKG' if (force_to_pkg and u_str == 'PL') else m.get(u_str, u_str)
+    return base + 'S' if u_str in ['PK','PL','CT'] and count > 1 else base
 
 def format_number(v):
     t = f"{round(v,3):.3f}"
@@ -39,10 +42,14 @@ with tab1:
         if main_file:
             log_uploaded_filename(main_file.name)
             df = pd.read_excel(main_file)
-            df = df[['House B/L No','컨테이너 번호','Seal#1','포장갯수','단위','Weight','Measure']].copy()
             
-            # Seal 번호 정제 (.str.split 사용)
+            # 필요한 컬럼만 추출
+            cols = ['House B/L No','컨테이너 번호','Seal#1','포장갯수','단위','Weight','Measure']
+            df = df[cols].copy()
+            
+            # 데이터 정제
             df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
+            df['단위'] = df['단위'].fillna('PKG') # 단위가 없으면 기본 PKG
 
             # 데이터 계산
             total = df.groupby(['컨테이너 번호','Seal#1']).agg(
@@ -56,7 +63,7 @@ with tab1:
             
             lines = []
 
-            # --- [GRAND TOTAL] 추가 (컨테이너 2대 이상일 때) ---
+            # --- [GRAND TOTAL] ---
             if len(total) >= 2:
                 g_pkg = int(total['포장갯수'].sum())
                 g_w = format_number(total['Weight'].sum())
@@ -95,7 +102,6 @@ with tab1:
                         lines.append("")
                     prev = cur
 
-                # 이 부분에서 SyntaxError가 나지 않도록 정확히 작성했습니다.
                 hbl_no = r['House B/L No']
                 pkg_val = int(r['포장갯수'])
                 unit_val = format_unit(r['단위'], r['포장갯수'], force_to_pkg)
@@ -108,7 +114,7 @@ with tab1:
 
             result = "\n".join(lines)
             st.success("정리가 완료되었습니다!")
-            st.text_area("📋 결과 (복사해서 사용하세요):", result, height=500)
+            st.text_area("📋 결과:", result, height=500)
             st.download_button("텍스트 파일로 저장", result, file_name=f"SR_{main_file.name.split('.')[0]}.txt")
 
 with tab2:
@@ -116,7 +122,5 @@ with tab2:
     if os.path.exists("upload_log.txt"):
         with open("upload_log.txt", "r", encoding='utf-8') as f:
             logs = f.read()
-        st.text_area("로그 내역 (시간 기록됨)", logs, height=400)
+        st.text_area("로그 내역", logs, height=400)
         st.download_button("로그 파일 다운로드", logs, file_name="sr_upload_log.txt")
-    else:
-        st.info("아직 기록된 로그가 없습니다.")
