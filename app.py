@@ -4,10 +4,8 @@ import os
 from datetime import datetime
 
 def format_unit(unit, count, force_to_pkg=False):
-    # 단위가 비어있을 경우(NaN)를 대비해 처리
     u_str = str(unit).upper() if pd.notna(unit) else "PKG"
     m = {'PK':'PKG','PL':'PLT','CT':'CTN'}
-    
     base = 'PKG' if (force_to_pkg and u_str == 'PL') else m.get(u_str, u_str)
     return base + 'S' if u_str in ['PK','PL','CT'] and count > 1 else base
 
@@ -22,34 +20,43 @@ def log_uploaded_filename(fn):
     with open(p, "a", encoding='utf-8') as f:
         f.write(entry)
 
-# 페이지 설정
-st.set_page_config(page_title="🚢 SR 자동 정리기", layout="wide")
+# 페이지 설정 (전체 화면 넓게 사용)
+st.set_page_config(page_title="🚢 SR Master", layout="wide")
 
-st.title("🚢 SR 제출 자동 정리기")
-st.info("엑셀 파일을 업로드하면 컨테이너별로 정리해드려요. (칼퇴 기원 ✨)")
+# 상단 귀여운 배 디자인
+st.markdown("<h1 style='text-align: center;'>🚢 SR 제출 자동 정리기 🚢</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: blue;'>🌊🌊🌊 오늘도 무사히 출항 준비 완료! (칼퇴 기원) 🌊🌊🌊</p>", unsafe_allow_html=True)
+st.write("---")
 
-# 메인 화면을 두 개의 탭으로 분리
-tab1, tab2 = st.tabs(["🚀 작업 도구", "📜 업로드 기록"])
+tab1, tab2 = st.tabs(["🚀 출항 준비 (작업)", "📜 항해 일지 (로그)"])
 
 with tab1:
-    col1, col2 = st.columns([1, 3])
+    # 파일 업로드 칸을 옆으로 넓게 배치 (1:2 비율)
+    col1, col2 = st.columns([1, 2])
+    
     with col1:
-        st.subheader("설정 및 업로드")
-        force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환")
-        main_file = st.file_uploader("엑셀 파일 업로드", type=["xlsx"])
+        st.subheader("⚙️ 설정")
+        force_to_pkg = st.checkbox("코스코 전용: PLT -> PKG 변환")
+        st.write("---")
+        st.caption("팁: 엑셀 파일의 B/L 번호가 없으면 자동으로 제외됩니다.")
 
     with col2:
-        if main_file:
+        st.subheader("📂 엑셀 파일 올리기")
+        main_file = st.file_uploader("여기에 파일을 끌어다 놓으세요 (xlsx)", type=["xlsx"])
+
+    if main_file:
+        with st.spinner('🚢 열심히 화물을 정리 중입니다... 잠시만 기다려주세요!'):
             log_uploaded_filename(main_file.name)
             df = pd.read_excel(main_file)
             
-            # 필요한 컬럼만 추출
+            # 필요한 컬럼만 추출 및 빈 줄 제거
             cols = ['House B/L No','컨테이너 번호','Seal#1','포장갯수','단위','Weight','Measure']
             df = df[cols].copy()
+            df = df.dropna(subset=['House B/L No'])
             
             # 데이터 정제
             df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
-            df['단위'] = df['단위'].fillna('PKG') # 단위가 없으면 기본 PKG
+            df['단위'] = df['단위'].fillna('PKG')
 
             # 데이터 계산
             total = df.groupby(['컨테이너 번호','Seal#1']).agg(
@@ -63,7 +70,7 @@ with tab1:
             
             lines = []
 
-            # --- [GRAND TOTAL] ---
+            # [GRAND TOTAL]
             if len(total) >= 2:
                 g_pkg = int(total['포장갯수'].sum())
                 g_w = format_number(total['Weight'].sum())
@@ -73,7 +80,7 @@ with tab1:
                 lines.append("-" * 30)
                 lines.append("")
 
-            # SUMMARY 섹션
+            # SUMMARY
             for _, r in total.iterrows():
                 pkg = int(r['포장갯수'])
                 w = format_number(r['Weight'])
@@ -81,15 +88,19 @@ with tab1:
                 lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
                 lines.append(f"TOTAL: {pkg} PKGS / {w} KGS / {m} CBM\n")
 
+            # <MARK> 섹션
             lines += ["<MARK>", ""]
             single = (len(total) == 1)
             for _, r in marks.iterrows():
                 if not single:
                     lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
-                lines += sorted(r['House B/L No'])
+                # 각 B/L 번호를 한 줄에 하나씩 추가
+                for hbl in sorted(r['House B/L No']):
+                    lines.append(hbl)
                 lines.append("")
             lines.append("")
 
+            # <DESCRIPTION> 섹션
             lines += ["<DESCRIPTION>", ""]
             prev = (None, None)
             for _, r in desc.iterrows():
@@ -113,14 +124,25 @@ with tab1:
                 lines.append("")
 
             result = "\n".join(lines)
-            st.success("정리가 완료되었습니다!")
-            st.text_area("📋 결과:", result, height=500)
-            st.download_button("텍스트 파일로 저장", result, file_name=f"SR_{main_file.name.split('.')[0]}.txt")
+            
+            st.success("✅ 화물 정리 완료! 선적 준비가 끝났습니다.")
+            
+            # 결과창 출력
+            st.text_area("📋 결과 (그대로 복사해서 사용하세요):", result, height=500)
+            
+            st.download_button(
+                label="💾 정리된 파일 다운로드 (.txt)",
+                data=result,
+                file_name=f"SR_DONE_{main_file.name.split('.')[0]}.txt",
+                mime="text/plain"
+            )
 
 with tab2:
-    st.subheader("최근 업로드 이력")
+    st.subheader("📜 최근 항해 이력")
     if os.path.exists("upload_log.txt"):
         with open("upload_log.txt", "r", encoding='utf-8') as f:
             logs = f.read()
-        st.text_area("로그 내역", logs, height=400)
-        st.download_button("로그 파일 다운로드", logs, file_name="sr_upload_log.txt")
+        st.text_area("로그 내역 (최신 업로드 순)", logs, height=400)
+        st.download_button("📝 로그 파일 다운로드", logs, file_name="shipping_log.txt")
+    else:
+        st.info("아직 기록된 항해 이력이 없습니다.")
