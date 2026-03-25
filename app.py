@@ -41,7 +41,6 @@ with tab1:
             log_uploaded_filename(main_file.name)
             df = pd.read_excel(main_file)
             
-            # 컬럼명 리스트 (잘림 방지를 위해 변수로 분리)
             target_cols = ['House B/L No','컨테이너 번호','Seal#1','포장갯수','단위','Weight','Measure']
             df = df[target_cols].copy()
             df = df.dropna(subset=['House B/L No'])
@@ -49,7 +48,6 @@ with tab1:
             df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
             df['단위'] = df['단위'].fillna('PKG')
 
-            # 요약 계산
             total = df.groupby(['컨테이너 번호','Seal#1']).agg(
                 포장갯수=('포장갯수','sum'),
                 Weight=('Weight','sum'),
@@ -58,7 +56,6 @@ with tab1:
             
             marks = df.groupby(['컨테이너 번호','Seal#1'])['House B/L No'].unique().reset_index()
             
-            # 정렬 (SyntaxError 방지를 위해 인덱스 리스트 활용)
             sort_keys = ['컨테이너 번호','Seal#1','House B/L No']
             desc = df.sort_values(sort_keys)
             
@@ -129,4 +126,19 @@ with tab1:
                     label="💾 메모장 다운로드",
                     data=result,
                     file_name=f"SR_{main_file.name.split('.')[0]}.txt",
-                    use_container
+                    use_container_width=True
+                )
+            
+            st.text_area("결과 데이터", result, height=600, label_visibility="collapsed")
+    else:
+        st.write("---")
+        st.info("엑셀파일을 업로드 해주세요.")
+
+with tab2:
+    st.subheader("업로드 이력")
+    if os.path.exists("upload_log.txt"):
+        with open("upload_log.txt", "r", encoding='utf-8') as f:
+            logs = f.read()
+        st.text_area("로그 데이터", logs, height=400)
+    else:
+        st.write("기록이 없습니다.")
