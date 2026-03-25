@@ -25,7 +25,7 @@ st.set_page_config(page_title="🚢 SR 자동 정리기", layout="wide")
 st.title("🚢 SR 제출 자동 정리기")
 st.info("엑셀 파일을 업로드하면 컨테이너별로 정리해드려요. (칼퇴 기원 ✨)")
 
-# 메인 화면을 두 개의 탭으로 분리 (효율적인 구성)
+# 메인 화면을 두 개의 탭으로 분리
 tab1, tab2 = st.tabs(["🚀 작업 도구", "📜 업로드 기록"])
 
 with tab1:
@@ -40,7 +40,9 @@ with tab1:
             log_uploaded_filename(main_file.name)
             df = pd.read_excel(main_file)
             df = df[['House B/L No','컨테이너 번호','Seal#1','포장갯수','단위','Weight','Measure']].copy()
-            df['Seal#1'] = df['Seal#1'].fillna('').astype(str).split('.').str[0]
+            
+            # 오류 수정된 부분: .str.split() 으로 변경
+            df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
 
             # 데이터 계산
             total = df.groupby(['컨테이너 번호','Seal#1']).agg(
@@ -76,7 +78,7 @@ with tab1:
             single = (len(total) == 1)
             for _, r in marks.iterrows():
                 if not single:
-                    lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}\n")
+                    lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
                 lines += sorted(r['House B/L No'])
                 lines.append("")
             lines.append("")
@@ -88,24 +90,8 @@ with tab1:
                 if cur != prev:
                     if prev[0] is not None: lines += ["", ""]
                     if not single:
-                        lines.append(f"{cur[0]} / {cur[1]}\n")
+                        lines.append(f"{cur[0]} / {cur[1]}")
+                        lines.append("")
                     prev = cur
 
-                lines.append(r['House B/L No'])
-                lines.append(f"{int(r['포장갯수'])} {format_unit(r['단위'],r['포장갯수'],force_to_pkg)} / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
-                lines.append("")
-
-            result = "\n".join(lines)
-            st.success("정리가 완료되었습니다!")
-            st.text_area("📋 결과 (복사해서 사용하세요):", result, height=500)
-            st.download_button("텍스트 파일로 저장", result, file_name=f"SR_{main_file.name.split('.')[0]}.txt")
-
-with tab2:
-    st.subheader("최근 업로드 이력")
-    if os.path.exists("upload_log.txt"):
-        with open("upload_log.txt", "r", encoding='utf-8') as f:
-            logs = f.read()
-        st.text_area("로그 내역 (최신순)", logs, height=400)
-        st.download_button("로그 파일 다운로드", logs, file_name="sr_upload_log.txt")
-    else:
-        st.write("아직 기록된 로그가 없습니다.")
+                lines.append(r['House B
