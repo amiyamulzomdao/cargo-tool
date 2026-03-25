@@ -67,7 +67,7 @@ with tab1:
             lines = []
             single = (len(total) == 1)
 
-            # [GRAND TOTAL] 섹션 - 가변 구분선 적용
+            # [GRAND TOTAL] 섹션 - 시각적 보정을 위해 +10칸 추가
             if not single:
                 g_p = int(total['포장갯수'].sum())
                 g_w = format_number(total['Weight'].sum())
@@ -77,8 +77,8 @@ with tab1:
                 
                 lines.append("[GRAND TOTAL]")
                 lines.append(total_line)
-                # 위 문장의 길이에 맞춰 '-' 개수 조절
-                lines.append("-" * len(total_line))
+                # 시각적으로 넉넉해 보이도록 글자 수보다 10칸 더 긋기
+                lines.append("-" * (len(total_line) + 10))
                 lines.append("")
 
             for _, r in total.iterrows():
