@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import os
-import re
 from datetime import datetime
 
 def format_unit(unit, count, force_to_pkg=False):
@@ -15,111 +14,98 @@ def format_number(v):
 
 def log_uploaded_filename(fn):
     p = "upload_log.txt"
-    entry = fn + "\n"
-    if os.path.exists(p):
-        lines = open(p,"r",encoding='utf-8').readlines()
-        if entry in lines: return
-        mode='a'
-    else:
-        mode='w'
-    with open(p, mode, encoding='utf-8') as f:
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    entry = f"[{now}] {fn}\n"
+    with open(p, "a", encoding='utf-8') as f:
         f.write(entry)
 
 # 페이지 설정
-st.set_page_config(
-    page_title="🚢 SR 제출 자동 정리기",
-    initial_sidebar_state="collapsed"
-)
+st.set_page_config(page_title="🚢 SR 자동 정리기", layout="wide")
 
-# UI 헤더
 st.title("🚢 SR 제출 자동 정리기")
-st.markdown("엑셀 파일을 업로드하면 컨테이너별로 정리해드려요(칼퇴기원✨)")
+st.info("엑셀 파일을 업로드하면 컨테이너별로 정리해드려요. (칼퇴 기원 ✨)")
 
-force_to_pkg = st.checkbox("코스코 PLT변환")
-main_file = st.file_uploader("메인 엑셀 파일 업로드", type=["xlsx"])
+# 메인 화면을 두 개의 탭으로 분리 (효율적인 구성)
+tab1, tab2 = st.tabs(["🚀 작업 도구", "📜 업로드 기록"])
 
-# 메인 파일 처리 로직
-if main_file:
-    log_uploaded_filename(main_file.name)
-    df = pd.read_excel(main_file)
-    df = df[['House B/L No','컨테이너 번호','Seal#1','포장갯수','단위','Weight','Measure']].copy()
-    df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
+with tab1:
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        st.subheader("설정 및 업로드")
+        force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환")
+        main_file = st.file_uploader("엑셀 파일 업로드", type=["xlsx"])
 
-    # SUMMARY
-    total = df.groupby(['컨테이너 번호','Seal#1']).agg(
-        포장갯수=('포장갯수','sum'),
-        Weight=('Weight','sum'),
-        Measure=('Measure','sum')
-    ).reset_index()
-    
-    # MARK
-    marks = df.groupby(['컨테이너 번호','Seal#1'])['House B/L No']\
-              .unique().reset_index()
-              
-    # DESCRIPTION
-    desc = df.groupby(['컨테이너 번호','Seal#1','House B/L No']).agg(
-        포장갯수=('포장갯수','sum'),
-        단위=('단위','first'),
-        Weight=('Weight','sum'),
-        Measure=('Measure','sum'),
-    ).reset_index().sort_values(
-        ['컨테이너 번호','Seal#1','House B/L No']
-    )
-    single = (len(total)==1)
+    with col2:
+        if main_file:
+            log_uploaded_filename(main_file.name)
+            df = pd.read_excel(main_file)
+            df = df[['House B/L No','컨테이너 번호','Seal#1','포장갯수','단위','Weight','Measure']].copy()
+            df['Seal#1'] = df['Seal#1'].fillna('').astype(str).split('.').str[0]
 
-    lines = []
-    # SUMMARY block
-    for _, r in total.iterrows():
-        pkg = int(r['포장갯수'])
-        w   = format_number(r['Weight'])
-        m   = format_number(r['Measure'])
-        lines.append(
-            f"{r['컨테이너 번호']} / {r['Seal#1']}\n"
-            f"TOTAL: {pkg} PKGS / {w} KGS / {m} CBM\n"
-        )
+            # 데이터 계산
+            total = df.groupby(['컨테이너 번호','Seal#1']).agg(
+                포장갯수=('포장갯수','sum'),
+                Weight=('Weight','sum'),
+                Measure=('Measure','sum')
+            ).reset_index()
+            
+            marks = df.groupby(['컨테이너 번호','Seal#1'])['House B/L No'].unique().reset_index()
+            desc = df.sort_values(['컨테이너 번호','Seal#1','House B/L No'])
+            
+            lines = []
 
-    # <MARK>
-    lines += ["<MARK>", ""]
-    for _, r in marks.iterrows():
-        if not single:
-            lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}"); lines.append("")
-        lines += sorted(r['House B/L No']); lines.append("")
-    lines.append("")
+            # --- [GRAND TOTAL] 추가 (컨테이너 2대 이상일 때) ---
+            if len(total) >= 2:
+                g_pkg = int(total['포장갯수'].sum())
+                g_w = format_number(total['Weight'].sum())
+                g_m = format_number(total['Measure'].sum())
+                lines.append("[GRAND TOTAL]")
+                lines.append(f"TOTAL: {g_pkg} PKGS / {g_w} KGS / {g_m} CBM")
+                lines.append("-" * 30)
+                lines.append("")
 
-    # <DESCRIPTION>
-    lines += ["<DESCRIPTION>", ""]
-    prev = (None,None)
-    for _, r in desc.iterrows():
-        cur = (r['컨테이너 번호'], r['Seal#1'])
-        if cur!=prev:
-            if prev[0] is not None: lines+=["","",""]
-            if not single:
-                lines.append(f"{cur[0]} / {cur[1]}"); lines.append("")
-            prev = cur
+            # SUMMARY block
+            for _, r in total.iterrows():
+                pkg = int(r['포장갯수'])
+                w = format_number(r['Weight'])
+                m = format_number(r['Measure'])
+                lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
+                lines.append(f"TOTAL: {pkg} PKGS / {w} KGS / {m} CBM\n")
 
-        hbl = r['House B/L No']
-        lines.append(hbl)
-        lines.append(
-            f"{int(r['포장갯수'])} "
-            f"{format_unit(r['단위'],r['포장갯수'],force_to_pkg)} / "
-            f"{format_number(r['Weight'])} KGS / "
-            f"{format_number(r['Measure'])} CBM"
-        )
-        # 매핑 정보 삭제로 인해 extra_map 관련 반복문 제거됨
-        lines.append("")
+            lines += ["<MARK>", ""]
+            single = (len(total) == 1)
+            for _, r in marks.iterrows():
+                if not single:
+                    lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}\n")
+                lines += sorted(r['House B/L No'])
+                lines.append("")
+            lines.append("")
 
-    result = "\n".join(lines)
-    st.text_area("📋 결과 출력:", result, height=600)
-    st.download_button(
-        "결과 텍스트 다운로드",
-        result,
-        file_name=f"{os.path.splitext(main_file.name)[0]}.txt"
-    )
+            lines += ["<DESCRIPTION>", ""]
+            prev = (None, None)
+            for _, r in desc.iterrows():
+                cur = (r['컨테이너 번호'], r['Seal#1'])
+                if cur != prev:
+                    if prev[0] is not None: lines += ["", ""]
+                    if not single:
+                        lines.append(f"{cur[0]} / {cur[1]}\n")
+                    prev = cur
 
-# Sidebar: Log button
-if st.sidebar.button("Log"):
+                lines.append(r['House B/L No'])
+                lines.append(f"{int(r['포장갯수'])} {format_unit(r['단위'],r['포장갯수'],force_to_pkg)} / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
+                lines.append("")
+
+            result = "\n".join(lines)
+            st.success("정리가 완료되었습니다!")
+            st.text_area("📋 결과 (복사해서 사용하세요):", result, height=500)
+            st.download_button("텍스트 파일로 저장", result, file_name=f"SR_{main_file.name.split('.')[0]}.txt")
+
+with tab2:
+    st.subheader("최근 업로드 이력")
     if os.path.exists("upload_log.txt"):
-        logs = open("upload_log.txt","r",encoding='utf-8').read()
-        st.sidebar.text_area("Log", logs, height=300)
+        with open("upload_log.txt", "r", encoding='utf-8') as f:
+            logs = f.read()
+        st.text_area("로그 내역 (최신순)", logs, height=400)
+        st.download_button("로그 파일 다운로드", logs, file_name="sr_upload_log.txt")
     else:
-        st.sidebar.warning("Log가 아직 없습니다.")
+        st.write("아직 기록된 로그가 없습니다.")
