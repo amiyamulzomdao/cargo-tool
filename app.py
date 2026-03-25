@@ -55,48 +55,4 @@ with tab1:
             ).reset_index()
             
             marks = df.groupby(['컨테이너 번호','Seal#1'])['House B/L No'].unique().reset_index()
-            desc = df.sort_values(['컨테이너 번호','Seal#1','House B/L No'])
-            
-            lines = []
-            single = (len(total) == 1)
-
-            # [GRAND TOTAL]
-            if len(total) >= 2:
-                g_pkg = int(total['포장갯수'].sum())
-                g_w = format_number(total['Weight'].sum())
-                g_m = format_number(total['Measure'].sum())
-                lines.append("[GRAND TOTAL]")
-                lines.append(f"TOTAL: {g_pkg} PKGS / {g_w} KGS / {g_m} CBM")
-                lines.append("-" * 30)
-                lines.append("")
-
-            # SUMMARY
-            for _, r in total.iterrows():
-                pkg = int(r['포장갯수'])
-                w = format_number(r['Weight'])
-                m = format_number(r['Measure'])
-                lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
-                lines.append(f"TOTAL: {pkg} PKGS / {w} KGS / {m} CBM\n")
-
-            # <MARK> 섹션
-            lines += ["<MARK>", ""]
-            for _, r in marks.iterrows():
-                if not single:
-                    lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
-                
-                for hbl in sorted(r['House B/L No']):
-                    lines.append(hbl)
-                    if single: 
-                        lines.append("")
-                
-                if not single: 
-                    lines.append("")
-            lines.append("")
-
-            # <DESCRIPTION> 섹션
-            lines += ["<DESCRIPTION>", ""]
-            prev = (None, None)
-            for _, r in desc.iterrows():
-                cur = (r['컨테이너 번호'], r['Seal#1'])
-                if cur != prev:
-                    if prev[0] is not None: lines += ["
+            desc = df.sort_values(['컨테이너 번호','Seal#1','House B/
