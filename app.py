@@ -22,7 +22,6 @@ def log_uploaded_filename(fn):
 
 # 페이지 설정
 st.set_page_config(page_title="SR 자동 정리기", layout="wide")
-
 st.title("SR 제출 자동 정리기")
 
 tab1, tab2 = st.tabs(["작업 도구", "업로드 기록"])
@@ -55,7 +54,6 @@ with tab1:
             ).reset_index()
             
             marks = df.groupby(['컨테이너 번호','Seal#1'])['House B/L No'].unique().reset_index()
-            
             sort_keys = ['컨테이너 번호','Seal#1','House B/L No']
             desc = df.sort_values(sort_keys)
             
@@ -81,13 +79,55 @@ with tab1:
             # <MARK> 섹션
             lines += ["<MARK>", ""]
             for _, r in marks.iterrows():
-                # 컨테이너가 1대일 때: 번호 출력 후 빈 줄 추가 (요청 사항)
+                # 컨테이너 정보 출력
+                lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
+                
+                # 요청하신 대로 컨테이너가 1대일 때 번호와 하우스번호 사이 빈 줄 추가
                 if single:
-                    lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
                     lines.append("") 
-                else:
-                    lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
                 
                 for hbl in sorted(r['House B/L No']):
                     lines.append(hbl)
-                    if single:
+                    if single: 
+                        lines.append("")
+                
+                if not single: 
+                    lines.append("")
+            lines.append("")
+
+            # <DESCRIPTION> 섹션
+            lines += ["<DESCRIPTION>", ""]
+            prev = (None, None)
+            for _, r in desc.iterrows():
+                cur = (r['컨테이너 번호'], r['Seal#1'])
+                if cur != prev:
+                    if prev[0] is not None:
+                        lines.append("")
+                        lines.append("")
+                    if not single:
+                        lines.append(f"{cur[0]} / {cur[1]}")
+                        lines.append("")
+                    prev = cur
+
+                h_no = r['House B/L No']
+                p_val = int(r['포장갯수'])
+                u_val = format_unit(r['단위'], r['포장갯수'], force_to_pkg)
+                w_val = format_number(r['Weight'])
+                m_val = format_number(r['Measure'])
+
+                lines.append(f"{h_no}")
+                lines.append(f"{p_val} {u_val} / {w_val} KGS / {m_val} CBM")
+                lines.append("")
+
+            result = "\n".join(lines)
+
+        with col_res:
+            res_c1, res_c2 = st.columns([2, 1])
+            with res_c1:
+                st.subheader("정리 결과")
+            with res_c2:
+                st.download_button(
+                    label="💾 메모장 다운로드",
+                    data=result,
+                    file_name=f"SR_{main_file.name.split('.')[0]}.txt",
+                    use_container
