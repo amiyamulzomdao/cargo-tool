@@ -31,9 +31,9 @@ with tab1:
     main_file = st.file_uploader("엑셀 파일을 업로드하세요 (xlsx)", type=["xlsx"])
 
     if main_file:
-        col_input, col_result = st.columns([1, 1.5])
+        col_in, col_res = st.columns([1, 1.5])
         
-        with col_input:
+        with col_in:
             st.subheader("설정 및 정보")
             force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환")
             st.info(f"파일: {main_file.name}")
@@ -41,13 +41,15 @@ with tab1:
             log_uploaded_filename(main_file.name)
             df = pd.read_excel(main_file)
             
-            cols = ['House B/L No','컨테이너 번호','Seal#1','포장갯수','단위','Weight','Measure']
-            df = df[cols].copy()
+            # 컬럼명 리스트 (잘림 방지를 위해 변수로 분리)
+            target_cols = ['House B/L No','컨테이너 번호','Seal#1','포장갯수','단위','Weight','Measure']
+            df = df[target_cols].copy()
             df = df.dropna(subset=['House B/L No'])
             
             df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
             df['단위'] = df['단위'].fillna('PKG')
 
+            # 요약 계산
             total = df.groupby(['컨테이너 번호','Seal#1']).agg(
                 포장갯수=('포장갯수','sum'),
                 Weight=('Weight','sum'),
@@ -55,4 +57,76 @@ with tab1:
             ).reset_index()
             
             marks = df.groupby(['컨테이너 번호','Seal#1'])['House B/L No'].unique().reset_index()
-            desc = df.sort_values(['컨테이너 번호','Seal#1','House B/
+            
+            # 정렬 (SyntaxError 방지를 위해 인덱스 리스트 활용)
+            sort_keys = ['컨테이너 번호','Seal#1','House B/L No']
+            desc = df.sort_values(sort_keys)
+            
+            lines = []
+            single = (len(total) == 1)
+
+            if len(total) >= 2:
+                g_p = int(total['포장갯수'].sum())
+                g_w = format_number(total['Weight'].sum())
+                g_m = format_number(total['Measure'].sum())
+                lines.append("[GRAND TOTAL]")
+                lines.append(f"TOTAL: {g_p} PKGS / {g_w} KGS / {g_m} CBM")
+                lines.append("-" * 30)
+                lines.append("")
+
+            for _, r in total.iterrows():
+                pkg = int(r['포장갯수'])
+                w = format_number(r['Weight'])
+                m = format_number(r['Measure'])
+                lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
+                lines.append(f"TOTAL: {pkg} PKGS / {w} KGS / {m} CBM\n")
+
+            lines += ["<MARK>", ""]
+            for _, r in marks.iterrows():
+                if not single:
+                    lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
+                
+                for hbl in sorted(r['House B/L No']):
+                    lines.append(hbl)
+                    if single: 
+                        lines.append("")
+                
+                if not single: 
+                    lines.append("")
+            lines.append("")
+
+            lines += ["<DESCRIPTION>", ""]
+            prev = (None, None)
+            for _, r in desc.iterrows():
+                cur = (r['컨테이너 번호'], r['Seal#1'])
+                if cur != prev:
+                    if prev[0] is not None:
+                        lines.append("")
+                        lines.append("")
+                    if not single:
+                        lines.append(f"{cur[0]} / {cur[1]}")
+                        lines.append("")
+                    prev = cur
+
+                h_no = r['House B/L No']
+                p_val = int(r['포장갯수'])
+                u_val = format_unit(r['단위'], r['포장갯수'], force_to_pkg)
+                w_val = format_number(r['Weight'])
+                m_val = format_number(r['Measure'])
+
+                lines.append(f"{h_no}")
+                lines.append(f"{p_val} {u_val} / {w_val} KGS / {m_val} CBM")
+                lines.append("")
+
+            result = "\n".join(lines)
+
+        with col_res:
+            res_c1, res_c2 = st.columns([2, 1])
+            with res_c1:
+                st.subheader("정리 결과")
+            with res_c2:
+                st.download_button(
+                    label="💾 메모장 다운로드",
+                    data=result,
+                    file_name=f"SR_{main_file.name.split('.')[0]}.txt",
+                    use_container
