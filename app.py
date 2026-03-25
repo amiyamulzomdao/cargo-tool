@@ -30,7 +30,6 @@ with tab1:
     main_file = st.file_uploader("엑셀 파일을 업로드하세요 (xlsx)", type=["xlsx"])
 
     if main_file:
-        # 화면 분할 레이아웃 설정
         col_in, col_res = st.columns([1, 1.5])
         
         with col_in:
@@ -66,4 +65,83 @@ with tab1:
                 g_w = format_number(total['Weight'].sum())
                 g_m = format_number(total['Measure'].sum())
                 lines.append("[GRAND TOTAL]")
-                lines.append(f"TOTAL: {g_p} PKGS / {g_
+                # 긴 문장 잘림 방지를 위해 분할 작성
+                gt_text = f"TOTAL: {g_p} PKGS / {g_w} KGS / {g_m} CBM"
+                lines.append(gt_text)
+                lines.append("-" * 30)
+                lines.append("")
+
+            for _, r in total.iterrows():
+                pkg = int(r['포장갯수'])
+                w = format_number(r['Weight'])
+                m = format_number(r['Measure'])
+                lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
+                lines.append(f"TOTAL: {pkg} PKGS / {w} KGS / {m} CBM\n")
+
+            # <MARK> 섹션
+            lines += ["<MARK>", ""]
+            for _, r in marks.iterrows():
+                lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
+                lines.append("") 
+                
+                hbl_list = sorted(r['House B/L No'])
+                for hbl in hbl_list:
+                    lines.append(hbl)
+                    if single:
+                        lines.append("")
+                
+                if not single:
+                    lines.append("")
+            lines.append("")
+
+            # <DESCRIPTION> 섹션
+            lines += ["<DESCRIPTION>", ""]
+            prev = (None, None)
+            for _, r in desc.iterrows():
+                cur = (r['컨테이너 번호'], r['Seal#1'])
+                if cur != prev:
+                    if prev[0] is not None:
+                        lines.append("")
+                        lines.append("")
+                    if not single:
+                        lines.append(f"{cur[0]} / {cur[1]}")
+                        lines.append("")
+                    prev = cur
+
+                h_no = r['House B/L No']
+                p_val = int(r['포장갯수'])
+                u_val = format_unit(r['단위'], r['포장갯수'], force_to_pkg)
+                w_val = format_number(r['Weight'])
+                m_val = format_number(r['Measure'])
+
+                lines.append(f"{h_no}")
+                desc_text = f"{p_val} {u_val} / {w_val} KGS / {m_val} CBM"
+                lines.append(desc_text)
+                lines.append("")
+
+            result = "\n".join(lines)
+
+        with col_res:
+            res_c1, res_c2 = st.columns([2, 1])
+            with res_c1:
+                st.subheader("정리 결과")
+            with res_c2:
+                st.download_button(
+                    label="💾 메모장 다운로드",
+                    data=result,
+                    file_name=f"SR_{main_file.name.split('.')[0]}.txt",
+                    use_container_width=True
+                )
+            st.text_area("결과 데이터", result, height=600, label_visibility="collapsed")
+    else:
+        st.write("---")
+        st.info("엑셀파일을 업로드 해주세요.")
+
+with tab2:
+    st.subheader("업로드 이력")
+    if os.path.exists("upload_log.txt"):
+        with open("upload_log.txt", "r", encoding='utf-8') as f:
+            logs = f.read()
+        st.text_area("로그 데이터", logs, height=400)
+    else:
+        st.write("기록이 없습니다.")
