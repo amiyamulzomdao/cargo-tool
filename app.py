@@ -5,7 +5,7 @@ from datetime import datetime
 
 def format_unit(unit, count, force_to_pkg=False):
     u_str = str(unit).upper() if pd.notna(unit) else "PKG"
-    m = {'PK':'PKG','PL':'PLT','CT':'CTN'}
+    m = {'PK':'PKG', 'PL':'PLT', 'CT':'CTN'}
     base = 'PKG' if (force_to_pkg and u_str == 'PL') else m.get(u_str, u_str)
     return base + 'S' if u_str in ['PK','PL','CT'] and count > 1 else base
 
@@ -44,6 +44,9 @@ with tab1:
             df = df[target_cols].copy()
             df = df.dropna(subset=['House B/L No'])
             
+            # GT 단위 존재 여부 확인
+            has_gt_unit = df['단위'].astype(str).str.upper().str.contains('GT').any()
+            
             df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
             df['단위'] = df['단위'].fillna('PKG')
 
@@ -65,7 +68,6 @@ with tab1:
                 g_w = format_number(total['Weight'].sum())
                 g_m = format_number(total['Measure'].sum())
                 lines.append("[GRAND TOTAL]")
-                # 긴 문장 잘림 방지를 위해 분할 작성
                 gt_text = f"TOTAL: {g_p} PKGS / {g_w} KGS / {g_m} CBM"
                 lines.append(gt_text)
                 lines.append("-" * 30)
@@ -78,7 +80,6 @@ with tab1:
                 lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
                 lines.append(f"TOTAL: {pkg} PKGS / {w} KGS / {m} CBM\n")
 
-            # <MARK> 섹션
             lines += ["<MARK>", ""]
             for _, r in marks.iterrows():
                 lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
@@ -89,12 +90,10 @@ with tab1:
                     lines.append(hbl)
                     if single:
                         lines.append("")
-                
                 if not single:
                     lines.append("")
             lines.append("")
 
-            # <DESCRIPTION> 섹션
             lines += ["<DESCRIPTION>", ""]
             prev = (None, None)
             for _, r in desc.iterrows():
@@ -112,11 +111,11 @@ with tab1:
                 p_val = int(r['포장갯수'])
                 u_val = format_unit(r['단위'], r['포장갯수'], force_to_pkg)
                 w_val = format_number(r['Weight'])
-                m_val = format_number(r['Measure'])
+                m_val = format_number(v=r['Measure'])
 
                 lines.append(f"{h_no}")
-                desc_text = f"{p_val} {u_val} / {w_val} KGS / {m_val} CBM"
-                lines.append(desc_text)
+                desc_line = f"{p_val} {u_val} / {w_val} KGS / {m_val} CBM"
+                lines.append(desc_line)
                 lines.append("")
 
             result = "\n".join(lines)
@@ -132,7 +131,13 @@ with tab1:
                     file_name=f"SR_{main_file.name.split('.')[0]}.txt",
                     use_container_width=True
                 )
+            
             st.text_area("결과 데이터", result, height=600, label_visibility="collapsed")
+            
+            # GT 단위가 있을 경우 빨간색 경고창 표시
+            if has_gt_unit:
+                st.error("⚠️ *GT 단위가 있습니다. 데이터 확인이 필요합니다.*")
+
     else:
         st.write("---")
         st.info("엑셀파일을 업로드 해주세요.")
