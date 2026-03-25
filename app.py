@@ -78,10 +78,16 @@ with tab1:
                 lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
                 lines.append(f"TOTAL: {pkg} PKGS / {w} KGS / {m} CBM\n")
 
+            # <MARK> 섹션
             lines += ["<MARK>", ""]
             for _, r in marks.iterrows():
                 if not single:
                     lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
+                
+                # 컨테이너 정보와 첫 번호 사이 한 칸 띄우기 (요청 사항 반영)
+                if single:
+                    lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
+                    lines.append("") 
                 
                 for hbl in sorted(r['House B/L No']):
                     lines.append(hbl)
@@ -92,6 +98,7 @@ with tab1:
                     lines.append("")
             lines.append("")
 
+            # <DESCRIPTION> 섹션
             lines += ["<DESCRIPTION>", ""]
             prev = (None, None)
             for _, r in desc.iterrows():
@@ -117,11 +124,11 @@ with tab1:
 
             result = "\n".join(lines)
 
-        with col_res:
+        with col_result:
             res_c1, res_c2 = st.columns([2, 1])
             with res_c1:
                 st.subheader("정리 결과")
-            with res_c2:
+            with res_col2_dummy := res_c2: # 변수 할당 오류 방지용
                 st.download_button(
                     label="💾 메모장 다운로드",
                     data=result,
