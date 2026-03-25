@@ -35,13 +35,13 @@ with tab1:
     if main_file:
         col_in, col_res = st.columns([1, 1.5])
         
-        # 1. 왼쪽 설정창 먼저 띄우기 (변수 정의)
+        # 1. 설정창 먼저 표시
         with col_in:
             st.subheader("설정 및 정보")
             force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환")
             st.info(f"파일: {main_file.name}")
 
-        # 2. 데이터 처리 시작 (이제 force_to_pkg 변수를 사용할 수 있음)
+        # 2. 데이터 처리 및 결과창 표시
         try:
             log_uploaded_filename(main_file.name)
             df = pd.read_excel(main_file)
@@ -62,48 +62,4 @@ with tab1:
                 Measure=('Measure','sum')
             ).reset_index()
             
-            marks = df.groupby(['컨테이너 번호','Seal#1'])['House B/L No'].unique().reset_index()
-            sort_keys = ['컨테이너 번호','Seal#1','House B/L No']
-            desc = df.sort_values(sort_keys)
-            
-            lines = []
-            single = (len(total) == 1)
-
-            if not single:
-                g_p = int(total['포장갯수'].sum())
-                g_w = format_number(total['Weight'].sum())
-                g_m = format_number(total['Measure'].sum())
-                lines.append("[GRAND TOTAL]")
-                lines.append(f"TOTAL: {g_p} PKGS / {g_w} KGS / {g_m} CBM")
-                lines.append("-" * 30)
-                lines.append("")
-
-            for _, r in total.iterrows():
-                pkg = int(r['포장갯수'])
-                w = format_number(r['Weight'])
-                m = format_number(r['Measure'])
-                lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
-                lines.append(f"TOTAL: {pkg} PKGS / {w} KGS / {m} CBM\n")
-
-            lines += ["<MARK>", ""]
-            for _, r in marks.iterrows():
-                lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
-                lines.append("") 
-                hbl_list = sorted(r['House B/L No'])
-                for hbl in hbl_list:
-                    lines.append(hbl)
-                    if single: lines.append("")
-                if not single: lines.append("")
-            lines.append("")
-
-            lines += ["<DESCRIPTION>", ""]
-            prev = (None, None)
-            for _, r in desc.iterrows():
-                cur = (r['컨테이너 번호'], r['Seal#1'])
-                if cur != prev:
-                    if prev[0] is not None:
-                        lines.append(""); lines.append("")
-                    if not single:
-                        lines.append(f"{cur[0]} / {cur[1]}")
-                        lines.append("")
-                    prev = cur
+            marks = df.groupby(['컨테이너 번호','Seal#1'])['House B/L No'].unique().reset
