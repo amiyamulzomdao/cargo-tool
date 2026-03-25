@@ -67,7 +67,6 @@ with tab1:
             lines = []
             single = (len(total) == 1)
 
-            # [GRAND TOTAL] 섹션
             if not single:
                 g_p = int(total['포장갯수'].sum())
                 g_w = format_number(total['Weight'].sum())
@@ -99,7 +98,6 @@ with tab1:
                 cur = (r['컨테이너 번호'], r['Seal#1'])
                 if cur != prev:
                     if prev[0] is not None:
-                        # 수정: None 잔상을 방지하기 위해 각각 한 줄씩 작성
                         lines.append("")
                         lines.append("")
                     if not single:
@@ -136,8 +134,8 @@ with tab1:
             st.error(f"데이터 처리 중 오류 발생: {e}")
             
     else:
-        st.write("---")
-        st.info("엑셀파일을 업로드 해주세요.")
+        # 수정: 파일 업로드 전 하단 안내 문구를 제거하고 빈 줄만 유지
+        st.write("")
 
 with tab2:
     st.subheader("업로드 이력")
