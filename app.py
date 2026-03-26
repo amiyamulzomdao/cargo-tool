@@ -25,9 +25,9 @@ def log_uploaded_filename(fn, category="SR"):
     entry = f"[{now}] ({category}) {fn}\n"
     with open(p, "a", encoding='utf-8') as f: f.write(entry)
 
-# --- 3. 페이지 기본 설정 (Europe Docs tool 고정) ---
+# --- 3. 페이지 기본 설정 (이모티콘 추가) ---
 st.set_page_config(page_title="Europe Docs tool", layout="wide")
-st.title("Europe Docs tool")
+st.title("🚢 Europe Docs tool")
 
 # 탭 구성
 tab1, tab2 = st.tabs(["SR 정정", "업로드 기록"])
@@ -41,8 +41,8 @@ with tab1:
         force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환", value=False)
 
     with col_up2:
-        # 요청하신 설명 문구로 수정 완료
-        item_file = st.file_uploader("2. 하우스리스트->엑셀내려받기 파일 입력_품목명을 입력할 수 있어요(선택)", type=["xlsx"], key="item_sub")
+        # 요청하신 최종 문구 반영
+        item_file = st.file_uploader("2. 하우스리스트->엑셀내려받기 파일 입력(품목명, HS CODE 입력 가능)_선택사항", type=["xlsx"], key="item_sub")
 
     st.divider()
 
@@ -58,7 +58,7 @@ with tab1:
             
             if item_file:
                 log_uploaded_filename(item_file.name, "ITEM")
-                # aaaaa.xlsx 구조 반영 (2행부터 데이터 시작)
+                # 2행(header=1)부터 데이터 시작
                 item_df = pd.read_excel(item_file, header=1)
                 item_df.columns = [str(c).strip() for c in item_df.columns]
                 
@@ -90,6 +90,7 @@ with tab1:
             df = sr_df[cols].copy()
             df = df.dropna(subset=['House B/L No'])
             
+            # GT 단위 체크
             gt_bls = df[df['단위'].fillna('').astype(str).str.upper().str.contains('GT')]['House B/L No'].unique().tolist()
             
             df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
