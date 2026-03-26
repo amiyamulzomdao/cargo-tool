@@ -28,17 +28,14 @@ def log_uploaded_filename(fn, category="SR"):
 st.set_page_config(page_title="카고2", layout="wide")
 st.title("카고2")
 
-# 탭 구성 (요청하신 대로 2개만 유지)
 tab1, tab2 = st.tabs(["SR 정정", "업로드 기록"])
 
 # --- TAB 1: SR 정정 ---
 with tab1:
-    # 1. 업로드 칸 가로 배열 [ ㅁ  ㅁ ]
     col_up1, col_up2 = st.columns(2)
     
     with col_up1:
         sr_file = st.file_uploader("1. SR 엑셀 파일 입력", type=["xlsx"], key="sr_main")
-        # 코스코 체크박스를 파일 업로드 바로 밑에 작게 배치
         force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환", value=False)
 
     with col_up2:
@@ -47,25 +44,33 @@ with tab1:
     st.divider()
 
     if sr_file:
-        # 결과창 레이아웃
         col_left_space, col_res = st.columns([1, 2.5])
         
         try:
             log_uploaded_filename(sr_file.name, "SR")
             sr_df = pd.read_excel(sr_file)
             
-            # 품목 정보 매핑 (두 번째 파일이 있을 경우)
+            # --- 품목 정보 매핑 로직 강화 ---
             item_dict = {}
             if item_file:
                 log_uploaded_filename(item_file.name, "ITEM")
+                # 엑셀을 읽을 때 두 번째 행부터 제목인 경우를 대비해 시도
                 item_df = pd.read_excel(item_file)
-                # aa.xlsx 구조에 맞춰 'House B/L No', '품목', 'HS CODE' 추출
-                for _, row in item_df.iterrows():
-                    h_no = str(row.get('House B/L No', '')).strip()
-                    desc = str(row.get('품목', '')).strip()
-                    hs = str(row.get('HS CODE', '')).strip()
-                    if h_no and h_no != "nan":
-                        item_dict[h_no] = {"desc": desc, "hs": hs}
+                
+                # 컬럼명에서 'House', '품목', 'HS' 단어가 들어간 열을 자동으로 찾기
+                h_col = next((c for c in item_df.columns if 'House' in str(c)), None)
+                d_col = next((c for c in item_df.columns if '품목' in str(c)), None)
+                s_col = next((c for c in item_df.columns if 'HS CODE' in str(c).upper()), None)
+
+                if h_col and d_col:
+                    for _, row in item_df.iterrows():
+                        # 하우스 번호에서 공백 제거
+                        h_no = str(row[h_col]).strip()
+                        desc = str(row[d_col]).strip() if pd.notna(row[d_col]) else ""
+                        hs = str(row[s_col]).strip() if s_col and pd.notna(row[s_col]) else ""
+                        
+                        if h_no and h_no != "nan":
+                            item_dict[h_no] = {"desc": desc, "hs": hs}
 
             # 기본 카고2 로직
             cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
@@ -107,16 +112,20 @@ with tab1:
                     if not single: lines.extend([f"{cur[0]} / {cur[1]}", ""])
                     prev = cur
                 
-                h_no = str(r['House B/L No']).strip()
+                h_no_raw = str(r['House B/L No']).strip()
                 u_val = format_unit(r['단위'], r['포장갯수'], force_to_pkg)
-                lines.append(h_no)
+                
+                lines.append(h_no_raw)
                 lines.append(f"{int(r['포장갯수'])} {u_val} / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
                 
-                # 추가 품목 정보가 있다면 출력
-                if h_no in item_dict:
-                    d_val, h_val = item_dict[h_no]["desc"], item_dict[h_no]["hs"]
-                    if d_val and d_val != "nan": lines.append(d_val)
-                    if h_val and h_val != "nan": lines.append(h_val)
+                # 품목 매칭 출력 (딕셔너리에서 검색)
+                if h_no_raw in item_dict:
+                    info = item_dict[h_no_raw]
+                    if info["desc"] and info["desc"].lower() != "nan":
+                        lines.append(info["desc"])
+                    if info["hs"] and info["hs"].lower() != "nan":
+                        lines.append(info["hs"])
+                
                 lines.append("")
             
             result = "\n".join(lines)
@@ -134,6 +143,3 @@ with tab2:
     if os.path.exists("upload_log.txt"):
         with open("upload_log.txt", "r", encoding='utf-8') as f:
             st.text_area("Log", f.read(), height=500)
-        if st.button("로그 비우기"):
-            os.remove("upload_log.txt")
-            st.rerun()
