@@ -32,14 +32,12 @@ st.title("카고2")
 # 탭 구성
 tab1, tab2 = st.tabs(["SR 정정", "업로드 기록"])
 
-# --- TAB 1: SR 정정 (메인 기능) ---
+# --- TAB 1: SR 정정 ---
 with tab1:
-    # 업로드 칸 가로 배열 [ 1번 파일 ] [ 2번 파일 ]
     col_up1, col_up2 = st.columns(2)
     
     with col_up1:
         sr_file = st.file_uploader("1. SR 엑셀 파일 입력", type=["xlsx"], key="sr_main")
-        # 코스코 체크박스 (첫 번째 칸 바로 아래)
         force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환", value=False)
 
     with col_up2:
@@ -48,20 +46,18 @@ with tab1:
     st.divider()
 
     if sr_file:
-        # 결과창 레이아웃 (오른쪽을 넓게)
         col_space, col_res = st.columns([1, 2.5])
         
         try:
             log_uploaded_filename(sr_file.name, "SR")
             sr_df = pd.read_excel(sr_file)
             
-            # --- 품목 정보 및 빈 줄 경고 로직 ---
             item_dict = {}
             empty_line_bls = [] 
             
             if item_file:
                 log_uploaded_filename(item_file.name, "ITEM")
-                # 2행(header=1)부터 제목으로 인식하여 읽기
+                # aa.xlsx 2행(header=1)부터 데이터 시작 반영
                 item_df = pd.read_excel(item_file, header=1)
                 item_df.columns = [str(c).strip() for c in item_df.columns]
                 
@@ -75,7 +71,7 @@ with tab1:
                         if h_no and h_no != "nan":
                             item_dict[h_no] = {"desc": desc_full.strip(), "hs": hs_raw}
                             
-                            # 내용 중간에 빈 줄이 있는지 감지 (앞뒤 공백 제외)
+                            # 내용 중간 빈 줄 감지 (양끝 공백 무시)
                             has_inner_empty = False
                             if "\n\n" in desc_stripped:
                                 has_inner_empty = True
@@ -93,7 +89,6 @@ with tab1:
             df = sr_df[cols].copy()
             df = df.dropna(subset=['House B/L No'])
             
-            # GT 단위 체크
             gt_bls = df[df['단위'].fillna('').astype(str).str.upper().str.contains('GT')]['House B/L No'].unique().tolist()
             
             df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
@@ -106,7 +101,6 @@ with tab1:
             lines = []
             single = (len(total) == 1)
             
-            # 텍스트 생성 시작
             if not single:
                 g_p = int(total['포장갯수'].sum())
                 total_line = f"TOTAL: {g_p} PKGS / {format_number(total['Weight'].sum())} KGS / {format_number(total['Measure'].sum())} CBM"
@@ -139,7 +133,6 @@ with tab1:
                 lines.append(h_no_raw)
                 lines.append(f"{int(r['포장갯수'])} {u_val} / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
                 
-                # 품목/HS CODE 추가
                 if h_no_raw in item_dict:
                     info = item_dict[h_no_raw]
                     if info["desc"] and info["desc"].lower() != "nan": lines.append(info["desc"])
@@ -148,7 +141,6 @@ with tab1:
             
             result = "\n".join(lines)
             
-            # 결과창 출력
             with col_res:
                 st.subheader("정리 결과")
                 
@@ -157,7 +149,8 @@ with tab1:
                 
                 if empty_line_bls:
                     bl_list_str = ', '.join(list(set(empty_line_bls)))
-                    st.warning(f"📢 **품목 내 빈 줄(다중 품목) 의심 B/L:** {bl_list_str} -> 수기로 컨테이너 별로 품목을 나눠주세요ㅎㅎ")
+                    # 수정된 문구: '컨테이너 별'
+                    st.warning(f"📢 **품목 내 빈 줄(다중 품목) 의심 B/L:** {bl_list_str} -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
                 
                 st.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt")
                 st.text_area("결과창", result, height=800, label_visibility="collapsed")
@@ -171,6 +164,3 @@ with tab2:
     if os.path.exists("upload_log.txt"):
         with open("upload_log.txt", "r", encoding='utf-8') as f:
             st.text_area("Log", f.read(), height=500)
-        if st.button("로그 비우기"):
-            os.remove("upload_log.txt")
-            st.rerun()
