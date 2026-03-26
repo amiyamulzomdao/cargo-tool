@@ -50,29 +50,31 @@ with tab1:
             log_uploaded_filename(sr_file.name, "SR")
             sr_df = pd.read_excel(sr_file)
             
-            # --- 품목 정보 매핑 로직 강화 ---
+            # --- 품목 정보 매핑 로직 (aa.xlsx 구조 반영) ---
             item_dict = {}
             if item_file:
                 log_uploaded_filename(item_file.name, "ITEM")
-                # 엑셀을 읽을 때 두 번째 행부터 제목인 경우를 대비해 시도
-                item_df = pd.read_excel(item_file)
+                # aa.xlsx는 1행이 비어있거나 제목이 아닐 수 있으므로 header=1(2행)부터 읽음
+                item_df = pd.read_excel(item_file, header=1)
                 
-                # 컬럼명에서 'House', '품목', 'HS' 단어가 들어간 열을 자동으로 찾기
-                h_col = next((c for c in item_df.columns if 'House' in str(c)), None)
-                d_col = next((c for c in item_df.columns if '품목' in str(c)), None)
-                s_col = next((c for c in item_df.columns if 'HS CODE' in str(c).upper()), None)
+                # 열 이름 정규화 (공백 제거 등)
+                item_df.columns = [str(c).strip() for c in item_df.columns]
+                
+                # 필요한 열 이름 정의
+                target_h = "House B/L No"
+                target_d = "품목"
+                target_s = "HS CODE"
 
-                if h_col and d_col:
+                if target_h in item_df.columns and target_d in item_df.columns:
                     for _, row in item_df.iterrows():
-                        # 하우스 번호에서 공백 제거
-                        h_no = str(row[h_col]).strip()
-                        desc = str(row[d_col]).strip() if pd.notna(row[d_col]) else ""
-                        hs = str(row[s_col]).strip() if s_col and pd.notna(row[s_col]) else ""
+                        h_no = str(row[target_h]).strip()
+                        desc = str(row[target_d]).strip() if pd.notna(row[target_d]) else ""
+                        hs = str(row[target_s]).strip() if target_s in item_df.columns and pd.notna(row[target_s]) else ""
                         
                         if h_no and h_no != "nan":
                             item_dict[h_no] = {"desc": desc, "hs": hs}
 
-            # 기본 카고2 로직
+            # 기본 SR 데이터 처리
             cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
             df = sr_df[cols].copy()
             df = df.dropna(subset=['House B/L No'])
@@ -115,10 +117,12 @@ with tab1:
                 h_no_raw = str(r['House B/L No']).strip()
                 u_val = format_unit(r['단위'], r['포장갯수'], force_to_pkg)
                 
+                # 1. 하우스 번호 출력
                 lines.append(h_no_raw)
+                # 2. 수량 / 중량 / 용적 출력
                 lines.append(f"{int(r['포장갯수'])} {u_val} / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
                 
-                # 품목 매칭 출력 (딕셔너리에서 검색)
+                # 3. 품목 및 HS CODE 출력 (매칭될 경우 바로 밑에 추가)
                 if h_no_raw in item_dict:
                     info = item_dict[h_no_raw]
                     if info["desc"] and info["desc"].lower() != "nan":
