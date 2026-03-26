@@ -50,17 +50,16 @@ with tab1:
             log_uploaded_filename(sr_file.name, "SR")
             sr_df = pd.read_excel(sr_file)
             
-            # --- 품목 정보 매핑 로직 (aa.xlsx 구조 반영) ---
+            # --- 품목 정보 매핑 및 다중 품목 체크 ---
             item_dict = {}
+            multi_item_bls = [] # 경고용 리스트
+            
             if item_file:
                 log_uploaded_filename(item_file.name, "ITEM")
-                # aa.xlsx는 1행이 비어있거나 제목이 아닐 수 있으므로 header=1(2행)부터 읽음
+                # aa.xlsx 구조상 header=1 (2행)부터 데이터 시작
                 item_df = pd.read_excel(item_file, header=1)
-                
-                # 열 이름 정규화 (공백 제거 등)
                 item_df.columns = [str(c).strip() for c in item_df.columns]
                 
-                # 필요한 열 이름 정의
                 target_h = "House B/L No"
                 target_d = "품목"
                 target_s = "HS CODE"
@@ -68,16 +67,25 @@ with tab1:
                 if target_h in item_df.columns and target_d in item_df.columns:
                     for _, row in item_df.iterrows():
                         h_no = str(row[target_h]).strip()
-                        desc = str(row[target_d]).strip() if pd.notna(row[target_d]) else ""
-                        hs = str(row[target_s]).strip() if target_s in item_df.columns and pd.notna(row[target_s]) else ""
+                        desc_raw = str(row[target_d]).strip() if pd.notna(row[target_d]) else ""
+                        hs_raw = str(row[target_s]).strip() if target_s in item_df.columns and pd.notna(row[target_s]) else ""
                         
                         if h_no and h_no != "nan":
-                            item_dict[h_no] = {"desc": desc, "hs": hs}
+                            item_dict[h_no] = {"desc": desc_raw, "hs": hs_raw}
+                            
+                            # [핵심] 품목명이 여러 개인지 체크 (줄바꿈이 있거나 특정 키워드 확인)
+                            # 엔터(\n)가 포함되어 있거나, 내용이 너무 길 경우 다중 품목으로 의심
+                            if desc_raw.count('\n') >= 1: 
+                                multi_item_bls.append(h_no)
 
             # 기본 SR 데이터 처리
             cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
             df = sr_df[cols].copy()
             df = df.dropna(subset=['House B/L No'])
+            
+            # GT 단위 체크
+            gt_bls = df[df['단위'].fillna('').astype(str).str.upper().str.contains('GT')]['House B/L No'].unique().tolist()
+            
             df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
             df['단위'] = df['단위'].fillna('PKG')
             
@@ -88,6 +96,7 @@ with tab1:
             lines = []
             single = (len(total) == 1)
             
+            # 결과 생성 로직 생략 (기존과 동일)
             if not single:
                 g_p = int(total['포장갯수'].sum())
                 total_line = f"TOTAL: {g_p} PKGS / {format_number(total['Weight'].sum())} KGS / {format_number(total['Measure'].sum())} CBM"
@@ -116,33 +125,34 @@ with tab1:
                 
                 h_no_raw = str(r['House B/L No']).strip()
                 u_val = format_unit(r['단위'], r['포장갯수'], force_to_pkg)
-                
-                # 1. 하우스 번호 출력
                 lines.append(h_no_raw)
-                # 2. 수량 / 중량 / 용적 출력
                 lines.append(f"{int(r['포장갯수'])} {u_val} / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
                 
-                # 3. 품목 및 HS CODE 출력 (매칭될 경우 바로 밑에 추가)
                 if h_no_raw in item_dict:
                     info = item_dict[h_no_raw]
-                    if info["desc"] and info["desc"].lower() != "nan":
-                        lines.append(info["desc"])
-                    if info["hs"] and info["hs"].lower() != "nan":
-                        lines.append(info["hs"])
-                
+                    if info["desc"] and info["desc"].lower() != "nan": lines.append(info["desc"])
+                    if info["hs"] and info["hs"].lower() != "nan": lines.append(info["hs"])
                 lines.append("")
             
             result = "\n".join(lines)
             
             with col_res:
                 st.subheader("정리 결과")
+                
+                # --- 경고창 구역 ---
+                if gt_bls:
+                    st.error(f"⚠️ **GT 단위 확인 필요 B/L:** {', '.join(gt_bls)}")
+                
+                if multi_item_bls:
+                    st.warning(f"📢 **품목 다중 입력 의심 B/L:** {', '.join(multi_item_bls)}")
+                
                 st.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt")
                 st.text_area("결과창", result, height=800, label_visibility="collapsed")
                 
         except Exception as e:
             st.error(f"오류 발생: {e}")
 
-# --- TAB 2: 업로드 기록 ---
+# --- TAB 2: 업로드 기록 (동일) ---
 with tab2:
     if os.path.exists("upload_log.txt"):
         with open("upload_log.txt", "r", encoding='utf-8') as f:
