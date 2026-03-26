@@ -28,9 +28,8 @@ def log_uploaded_filename(fn, category="SR"):
 def clean_date(val):
     if pd.isna(val) or val == "": return ""
     try:
-        if isinstance(val, datetime):
+        if isinstance(val, (datetime, pd.Timestamp)):
             return val.strftime("%d-%b-%Y")
-        # 문자열인 경우 날짜형식 시도
         dt = pd.to_datetime(val)
         return dt.strftime("%d-%b-%Y")
     except:
@@ -38,12 +37,12 @@ def clean_date(val):
 
 def clean_rating_date(val):
     if pd.isna(val): return ""
-    target = "outport shipment based on actual deoarture"
-    if target in str(val).lower():
+    v_str = str(val)
+    if "outport shipment based on actual deoarture" in v_str.lower():
         return "ETD of proforma schedule"
-    return str(val)
+    return v_str
 
-# --- 표 스타일링 (KeyError 방지 로직 추가) ---
+# --- 표 스타일링 (에러 방지 강화) ---
 def style_tariff(row):
     # 선사별 색상 매핑
     colors = {
@@ -54,11 +53,11 @@ def style_tariff(row):
         'MSC': 'background-color: #FFF3E0',
         'HPL': 'background-color: #F1F8E9'
     }
-    # 강조할 열 리스트
+    # 강조할 열 리스트 (실제 컬럼명과 대조)
     yellow_cols = ['START DATE', 'Validity', "20'gp", "40'gp", "40'HQ"]
     
     styles = []
-    # Carrier 열이 있는지 확인 후 색상 결정
+    # Carrier 정보 안전하게 가져오기
     carrier_val = str(row.get('Carrier', '')).upper()[:3]
     base_color = colors.get(carrier_val, '')
     
@@ -76,7 +75,7 @@ st.title("Cargo Master v3")
 if 'tariff_history' not in st.session_state:
     st.session_state.tariff_history = pd.DataFrame()
 
-# 탭 이름에서 빨간색 및 강조 제거
+# 탭 이름 정리
 tab1, tab2, tab3 = st.tabs(["SR 정정", "업로드 기록", "로이타리프"])
 
 # --- TAB 1: SR 정정 ---
@@ -164,18 +163,18 @@ with tab3:
     if t_file:
         try:
             log_uploaded_filename(t_file.name, "Tariff")
+            # FAK 시트의 데이터 헤더가 5번 행(index 4)인지 확인
             df_t = pd.read_excel(t_file, sheet_name='FAK', header=4)
             
-            # 엑셀 열 추출 (인덱스 주의: B=1, C=2, F=5, I=8, J=9, K=10, L=11, M=12, N=13, Q=16)
-            # 엑셀에서 'Surcharge' 정보가 담긴 Q열은 인덱스 16입니다.
-            target_cols = [1, 2, 5, 8, 9, 10, 11, 12, 13, 16] 
-            extracted = df_t.iloc[:, target_cols].copy()
+            # 엑셀 열 추출: B, C, F, I, J, K, L, M, N, Q
+            target_idx = [1, 2, 5, 8, 9, 10, 11, 12, 13, 16] 
+            extracted = df_t.iloc[:, target_idx].copy()
             extracted.columns = ['POL', 'POD', 'Carrier', 'START DATE', 'Validity', 'Carrier\nRating date', "20'gp", "40'gp", "40'HQ", "Surcharge"]
             
-            # POL 부산 필터링
+            # 부산 필터링
             extracted = extracted[extracted['POL'].fillna('').astype(str).str.contains("BUSAN", case=False)]
             
-            # 날짜 가공
+            # 날짜 및 문구 가공
             extracted['START DATE'] = extracted['START DATE'].apply(clean_date)
             extracted['Validity'] = extracted['Validity'].apply(clean_date)
             extracted['Carrier\nRating date'] = extracted['Carrier\nRating date'].apply(clean_rating_date)
@@ -184,17 +183,17 @@ with tab3:
             for col in ["20'gp", "40'gp", "40'HQ"]:
                 extracted[col] = extracted[col].apply(lambda x: f"USD {int(float(x))}" if pd.notna(x) and str(x).replace('.','').replace(',','').isdigit() else x)
             
-            # Surcharge 줄바꿈 가공
+            # Surcharge 줄바꿈
             extracted['Surcharge'] = extracted['Surcharge'].astype(str).str.replace('EFS', '\nEFS', regex=False)
 
             extracted['파일명'] = t_file.name
-            # 데이터 누적
             st.session_state.tariff_history = pd.concat([extracted, st.session_state.tariff_history]).drop_duplicates()
 
         except Exception as e:
-            st.error(f"데이터 처리 중 오류 발생: {e}")
+            st.error(f"데이터 처리 오류: {e}")
 
     if not st.session_state.tariff_history.empty:
+        # 선사 리스트 추출
         carriers = sorted(st.session_state.tariff_history['Carrier'].dropna().unique())
         with col_t3: sel_carrier = st.selectbox("Carrier 선택", ["전체"] + list(carriers))
 
@@ -203,8 +202,11 @@ with tab3:
         if sel_carrier != "전체": res_df = res_df[res_df['Carrier'] == sel_carrier]
 
         st.write("---")
-        # KeyError 방지를 위해 .get() 로직이 포함된 style 함수 적용
-        st.dataframe(res_df.style.apply(style_tariff, axis=1), use_container_width=True)
+        # 데이터가 있을 때만 스타일 적용하여 출력
+        if not res_df.empty:
+            st.dataframe(res_df.style.apply(style_tariff, axis=1), use_container_width=True)
+        else:
+            st.info("조건에 맞는 운임 데이터가 없습니다.")
         
         if st.button("기록 초기화"):
             st.session_state.tariff_history = pd.DataFrame()
