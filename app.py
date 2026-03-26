@@ -41,7 +41,8 @@ with tab1:
         force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환", value=False)
 
     with col_up2:
-        item_file = st.file_uploader("2. 하우스리스트->엑셀내려받기 파일 입력 (선택)", type=["xlsx"], key="item_sub")
+        # 요청하신 설명 문구로 수정 완료
+        item_file = st.file_uploader("2. 하우스리스트->엑셀내려받기 파일 입력_품목명을 입력할 수 있어요(선택)", type=["xlsx"], key="item_sub")
 
     st.divider()
 
@@ -57,7 +58,7 @@ with tab1:
             
             if item_file:
                 log_uploaded_filename(item_file.name, "ITEM")
-                # 2행(header=1)부터 데이터 시작 반영
+                # aaaaa.xlsx 구조 반영 (2행부터 데이터 시작)
                 item_df = pd.read_excel(item_file, header=1)
                 item_df.columns = [str(c).strip() for c in item_df.columns]
                 
@@ -149,7 +150,6 @@ with tab1:
                 
                 if empty_line_bls:
                     bl_list_str = ', '.join(list(set(empty_line_bls)))
-                    # 요청하신 '다중 품목 의심' 문구 적용
                     st.warning(f"📢 **다중 품목 의심 B/L:** {bl_list_str} -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
                 
                 st.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt")
