@@ -25,9 +25,9 @@ def log_uploaded_filename(fn, category="SR"):
     entry = f"[{now}] ({category}) {fn}\n"
     with open(p, "a", encoding='utf-8') as f: f.write(entry)
 
-# --- 3. 페이지 기본 설정 ---
-st.set_page_config(page_title="카고2", layout="wide")
-st.title("카고2")
+# --- 3. 페이지 기본 설정 (Europe Docs tool 고정) ---
+st.set_page_config(page_title="Europe Docs tool", layout="wide")
+st.title("Europe Docs tool")
 
 # 탭 구성
 tab1, tab2 = st.tabs(["SR 정정", "업로드 기록"])
@@ -57,7 +57,7 @@ with tab1:
             
             if item_file:
                 log_uploaded_filename(item_file.name, "ITEM")
-                # aa.xlsx 2행(header=1)부터 데이터 시작 반영
+                # aaaaa.xlsx 구조 반영 (2행부터 데이터 시작)
                 item_df = pd.read_excel(item_file, header=1)
                 item_df.columns = [str(c).strip() for c in item_df.columns]
                 
@@ -149,7 +149,6 @@ with tab1:
                 
                 if empty_line_bls:
                     bl_list_str = ', '.join(list(set(empty_line_bls)))
-                    # 수정된 문구: '컨테이너 별'
                     st.warning(f"📢 **품목 내 빈 줄(다중 품목) 의심 B/L:** {bl_list_str} -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
                 
                 st.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt")
