@@ -50,13 +50,11 @@ with tab1:
             log_uploaded_filename(sr_file.name, "SR")
             sr_df = pd.read_excel(sr_file)
             
-            # --- 품목 정보 매핑 및 다중 품목 체크 ---
             item_dict = {}
-            multi_item_bls = [] # 경고용 리스트
+            empty_line_bls = [] # 빈 줄이 포함된 B/L 리스트
             
             if item_file:
                 log_uploaded_filename(item_file.name, "ITEM")
-                # aa.xlsx 구조상 header=1 (2행)부터 데이터 시작
                 item_df = pd.read_excel(item_file, header=1)
                 item_df.columns = [str(c).strip() for c in item_df.columns]
                 
@@ -67,23 +65,33 @@ with tab1:
                 if target_h in item_df.columns and target_d in item_df.columns:
                     for _, row in item_df.iterrows():
                         h_no = str(row[target_h]).strip()
-                        desc_raw = str(row[target_d]).strip() if pd.notna(row[target_d]) else ""
+                        desc_raw = str(row[target_d]) if pd.notna(row[target_d]) else ""
                         hs_raw = str(row[target_s]).strip() if target_s in item_df.columns and pd.notna(row[target_s]) else ""
                         
                         if h_no and h_no != "nan":
                             item_dict[h_no] = {"desc": desc_raw, "hs": hs_raw}
                             
-                            # [핵심] 품목명이 여러 개인지 체크 (줄바꿈이 있거나 특정 키워드 확인)
-                            # 엔터(\n)가 포함되어 있거나, 내용이 너무 길 경우 다중 품목으로 의심
-                            if desc_raw.count('\n') >= 1: 
-                                multi_item_bls.append(h_no)
+                            # [수정된 로직] 단순히 줄바꿈이 아니라, "빈 줄"이 있는지 체크
+                            # \n\n 이 있거나, 줄 사이에 공백만 있는 줄이 있는지 확인
+                            lines = desc_raw.split('\n')
+                            has_empty_line = False
+                            if len(lines) > 1:
+                                for i in range(len(lines) - 1):
+                                    # 현재 줄과 다음 줄 사이에 아무 내용도 없는 줄이 끼어 있는지 확인
+                                    if lines[i].strip() == "" and i != 0 and i != len(lines)-1:
+                                        has_empty_line = True
+                                    # 연속된 줄바꿈(\n\n) 체크
+                                    if "\n\n" in desc_raw:
+                                        has_empty_line = True
+                            
+                            if has_empty_line:
+                                empty_line_bls.append(h_no)
 
-            # 기본 SR 데이터 처리
+            # 데이터 가공 로직
             cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
             df = sr_df[cols].copy()
             df = df.dropna(subset=['House B/L No'])
             
-            # GT 단위 체크
             gt_bls = df[df['단위'].fillna('').astype(str).str.upper().str.contains('GT')]['House B/L No'].unique().tolist()
             
             df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
@@ -96,7 +104,6 @@ with tab1:
             lines = []
             single = (len(total) == 1)
             
-            # 결과 생성 로직 생략 (기존과 동일)
             if not single:
                 g_p = int(total['포장갯수'].sum())
                 total_line = f"TOTAL: {g_p} PKGS / {format_number(total['Weight'].sum())} KGS / {format_number(total['Measure'].sum())} CBM"
@@ -139,12 +146,11 @@ with tab1:
             with col_res:
                 st.subheader("정리 결과")
                 
-                # --- 경고창 구역 ---
                 if gt_bls:
                     st.error(f"⚠️ **GT 단위 확인 필요 B/L:** {', '.join(gt_bls)}")
                 
-                if multi_item_bls:
-                    st.warning(f"📢 **품목 다중 입력 의심 B/L:** {', '.join(multi_item_bls)}")
+                if empty_line_bls:
+                    st.warning(f"📢 **품목 내 빈 줄(다중 품목) 의심 B/L:** {', '.join(empty_line_bls)}")
                 
                 st.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt")
                 st.text_area("결과창", result, height=800, label_visibility="collapsed")
@@ -152,7 +158,7 @@ with tab1:
         except Exception as e:
             st.error(f"오류 발생: {e}")
 
-# --- TAB 2: 업로드 기록 (동일) ---
+# --- TAB 2: 업로드 기록 ---
 with tab2:
     if os.path.exists("upload_log.txt"):
         with open("upload_log.txt", "r", encoding='utf-8') as f:
