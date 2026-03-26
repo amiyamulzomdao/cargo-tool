@@ -26,40 +26,47 @@ def log_uploaded_filename(fn, category="SR"):
 
 # --- 날짜 및 문구 가공 함수 ---
 def clean_date(val):
-    if pd.isna(val): return ""
-    if isinstance(val, datetime):
-        return val.strftime("%d-%b-%Y") # 예: 21-Mar-2026
-    return str(val)
+    if pd.isna(val) or val == "": return ""
+    try:
+        if isinstance(val, datetime):
+            return val.strftime("%d-%b-%Y")
+        # 문자열인 경우 날짜형식 시도
+        dt = pd.to_datetime(val)
+        return dt.strftime("%d-%b-%Y")
+    except:
+        return str(val)
 
 def clean_rating_date(val):
-    long_str = "(outport shipment based on actual deoarture)"
     if pd.isna(val): return ""
-    if long_str in str(val):
+    target = "outport shipment based on actual deoarture"
+    if target in str(val).lower():
         return "ETD of proforma schedule"
     return str(val)
 
-# --- 표 스타일링 (색상) 함수 ---
+# --- 표 스타일링 (KeyError 방지 로직 추가) ---
 def style_tariff(row):
-    # 선사별 고유 색상 매핑
+    # 선사별 색상 매핑
     colors = {
-        'CMA': 'background-color: #E3F2FD', # 연파랑
-        'ONE': 'background-color: #FCE4EC', # 연분홍
-        'HMM': 'background-color: #F3E5F5', # 연보라
-        'MSK': 'background-color: #E8F5E9', # 연초록
-        'MSC': 'background-color: #FFF3E0', # 연주황
-        'HPL': 'background-color: #F1F8E9'  # 연연두
+        'CMA': 'background-color: #E3F2FD',
+        'ONE': 'background-color: #FCE4EC',
+        'HMM': 'background-color: #F3E5F5',
+        'MSK': 'background-color: #E8F5E9',
+        'MSC': 'background-color: #FFF3E0',
+        'HPL': 'background-color: #F1F8E9'
     }
-    # 기본 강조 색상 (노란색)
+    # 강조할 열 리스트
     yellow_cols = ['START DATE', 'Validity', "20'gp", "40'gp", "40'HQ"]
     
     styles = []
-    base_color = colors.get(str(row['Carrier']).upper()[:3], '') # 선사별 색상
+    # Carrier 열이 있는지 확인 후 색상 결정
+    carrier_val = str(row.get('Carrier', '')).upper()[:3]
+    base_color = colors.get(carrier_val, '')
     
-    for col in row.index:
-        if col in yellow_cols:
-            styles.append('background-color: #FFF9C4') # 노란색 우선
+    for col_name in row.index:
+        if col_name in yellow_cols:
+            styles.append('background-color: #FFF9C4') # 노란색 강조
         else:
-            styles.append(base_color)
+            styles.append(base_color) # 선사별 배경색
     return styles
 
 # --- 페이지 설정 ---
@@ -69,24 +76,78 @@ st.title("Cargo Master v3")
 if 'tariff_history' not in st.session_state:
     st.session_state.tariff_history = pd.DataFrame()
 
+# 탭 이름에서 빨간색 및 강조 제거
 tab1, tab2, tab3 = st.tabs(["SR 정정", "업로드 기록", "로이타리프"])
 
-# --- TAB 1: SR 정정 (기능 유지) ---
+# --- TAB 1: SR 정정 ---
 with tab1:
-    main_file = st.file_uploader("SR 엑셀 파일", type=["xlsx"], key="sr_upload")
+    main_file = st.file_uploader("SR 엑셀 파일 업로드", type=["xlsx"], key="sr_upload")
     if main_file:
+        col_in, col_res = st.columns([1, 1.5])
+        with col_in:
+            st.subheader("설정 및 정보")
+            force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환")
+            st.info(f"파일: {main_file.name}")
         try:
             log_uploaded_filename(main_file.name, "SR")
             df = pd.read_excel(main_file)
-            # ... (중략: 기존 SR 처리 로직 유지) ...
-            st.success("SR 처리가 완료되었습니다.")
-        except: pass
+            cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
+            df = df[cols].copy()
+            df = df.dropna(subset=['House B/L No'])
+            df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
+            df['단위'] = df['단위'].fillna('PKG')
+            
+            total = df.groupby(['컨테이너 번호', 'Seal#1']).agg(포장갯수=('포장갯수','sum'), Weight=('Weight','sum'), Measure=('Measure','sum')).reset_index()
+            marks = df.groupby(['컨테이너 번호', 'Seal#1'])['House B/L No'].unique().reset_index()
+            desc_df = df.sort_values(['컨테이너 번호', 'Seal#1', 'House B/L No'])
+            
+            lines = []
+            single = (len(total) == 1)
+            if not single:
+                g_p = int(total['포장갯수'].sum())
+                total_line = f"TOTAL: {g_p} PKGS / {format_number(total['Weight'].sum())} KGS / {format_number(total['Measure'].sum())} CBM"
+                lines.extend(["[GRAND TOTAL]", total_line, "-" * (len(total_line) + 10), ""])
+            
+            for _, r in total.iterrows():
+                lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
+                lines.append(f"TOTAL: {int(r['포장갯수'])} PKGS / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM\n")
+            
+            lines.append("<MARK>\n")
+            for _, r in marks.iterrows():
+                lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}\n")
+                for hbl in sorted(r['House B/L No']):
+                    lines.append(hbl)
+                    if single: lines.append("")
+                lines.append("")
+            
+            lines.extend(["<DESCRIPTION>", ""])
+            prev = (None, None)
+            for _, r in desc_df.iterrows():
+                cur = (r['컨테이너 번호'], r['Seal#1'])
+                if cur != prev:
+                    if prev[0] is not None: lines.extend(["", ""])
+                    if not single: lines.extend([f"{cur[0]} / {cur[1]}", ""])
+                    prev = cur
+                u_val = format_unit(r['단위'], r['포장갯수'], force_to_pkg)
+                lines.extend([f"{r['House B/L No']}", f"{int(r['포장갯수'])} {u_val} / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM", ""])
+            
+            result = "\n".join(lines)
+            with col_res:
+                c1, c2 = st.columns([2, 1])
+                c1.subheader("정리 결과")
+                c2.download_button("💾 메모장 다운로드", result, f"SR_{main_file.name.split('.')[0]}.txt", use_container_width=True)
+                st.text_area("결과", result, height=600, label_visibility="collapsed")
+        except Exception as e: st.error(f"오류 발생: {e}")
 
 # --- TAB 2: 업로드 기록 ---
 with tab2:
+    st.subheader("📁 통합 업로드 이력")
     if os.path.exists("upload_log.txt"):
         with open("upload_log.txt", "r", encoding='utf-8') as f:
             st.text_area("로그 데이터", f.read(), height=500)
+        if st.button("로그 비우기"):
+            os.remove("upload_log.txt")
+            st.rerun()
 
 # --- TAB 3: 로이타리프 ---
 with tab3:
@@ -105,45 +166,46 @@ with tab3:
             log_uploaded_filename(t_file.name, "Tariff")
             df_t = pd.read_excel(t_file, sheet_name='FAK', header=4)
             
-            # 엑셀 열 인덱스 정확히 추출: B, C, F, H, I, J, K + L, M, N ...
-            # 1, 2, 5, 7, 8, 9, 10, 11, 12, 13
+            # 엑셀 열 추출 (인덱스 주의: B=1, C=2, F=5, I=8, J=9, K=10, L=11, M=12, N=13, Q=16)
+            # 엑셀에서 'Surcharge' 정보가 담긴 Q열은 인덱스 16입니다.
             target_cols = [1, 2, 5, 8, 9, 10, 11, 12, 13, 16] 
             extracted = df_t.iloc[:, target_cols].copy()
             extracted.columns = ['POL', 'POD', 'Carrier', 'START DATE', 'Validity', 'Carrier\nRating date', "20'gp", "40'gp", "40'HQ", "Surcharge"]
             
-            # 1. POL 부산 필터링
+            # POL 부산 필터링
             extracted = extracted[extracted['POL'].fillna('').astype(str).str.contains("BUSAN", case=False)]
             
-            # 2. 날짜 및 문구 가공
+            # 날짜 가공
             extracted['START DATE'] = extracted['START DATE'].apply(clean_date)
             extracted['Validity'] = extracted['Validity'].apply(clean_date)
             extracted['Carrier\nRating date'] = extracted['Carrier\nRating date'].apply(clean_rating_date)
             
-            # 3. 금액 정수화 + USD 접두사
+            # 금액 정수화 + USD 표기
             for col in ["20'gp", "40'gp", "40'HQ"]:
-                extracted[col] = extracted[col].apply(lambda x: f"USD {int(float(x))}" if pd.notna(x) and str(x).replace('.','').isdigit() else x)
+                extracted[col] = extracted[col].apply(lambda x: f"USD {int(float(x))}" if pd.notna(x) and str(x).replace('.','').replace(',','').isdigit() else x)
             
-            # 4. Surcharge 줄바꿈 (EES / EFS 구분)
-            extracted['Surcharge'] = extracted['Surcharge'].str.replace('EFS', '\nEFS', regex=False)
+            # Surcharge 줄바꿈 가공
+            extracted['Surcharge'] = extracted['Surcharge'].astype(str).str.replace('EFS', '\nEFS', regex=False)
 
             extracted['파일명'] = t_file.name
+            # 데이터 누적
             st.session_state.tariff_history = pd.concat([extracted, st.session_state.tariff_history]).drop_duplicates()
 
         except Exception as e:
-            st.error(f"오류: {e}")
+            st.error(f"데이터 처리 중 오류 발생: {e}")
 
     if not st.session_state.tariff_history.empty:
         carriers = sorted(st.session_state.tariff_history['Carrier'].dropna().unique())
         with col_t3: sel_carrier = st.selectbox("Carrier 선택", ["전체"] + list(carriers))
 
         res_df = st.session_state.tariff_history.copy()
-        if sel_pod != "전체": res_df = res_df[res_df['POD'].str.contains(sel_pod, na=False)]
+        if sel_pod != "전체": res_df = res_df[res_df['POD'].astype(str).str.contains(sel_pod, na=False)]
         if sel_carrier != "전체": res_df = res_df[res_df['Carrier'] == sel_carrier]
 
         st.write("---")
-        # 스타일 적용 (선사별 색상 + 노란색 강조)
+        # KeyError 방지를 위해 .get() 로직이 포함된 style 함수 적용
         st.dataframe(res_df.style.apply(style_tariff, axis=1), use_container_width=True)
         
-        if st.button("초기화"):
+        if st.button("기록 초기화"):
             st.session_state.tariff_history = pd.DataFrame()
             st.rerun()
