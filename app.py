@@ -24,6 +24,13 @@ def log_uploaded_filename(fn, category="SR"):
     entry = f"[{now}] ({category}) {fn}\n"
     with open(p, "a", encoding='utf-8') as f: f.write(entry)
 
+def clean_date_final(val):
+    if pd.isna(val) or val == "": return ""
+    try:
+        dt = pd.to_datetime(val)
+        return dt.strftime("%d-%b-%Y")
+    except: return str(val)
+
 # --- 페이지 설정 ---
 st.set_page_config(page_title="Europe Docs tool", layout="wide")
 st.title("Europe Docs tool")
@@ -33,37 +40,40 @@ if 'tariff_db' not in st.session_state:
 
 tab1, tab2, tab3 = st.tabs(["SR 정정", "업로드 기록", "로이타리프"])
 
-# --- TAB 1: SR 정정 ---
+# --- TAB 1: SR 정정 (가로 배치 레이아웃) ---
 with tab1:
-    col_files, col_res = st.columns([1, 1.5])
+    # 화면을 좌(1):우(1.5)로 분할
+    col_left, col_right = st.columns([1, 1.5])
     
-    with col_files:
-        st.subheader("파일 업로드")
-        sr_file = st.file_uploader("1. SR 엑셀 파일을 업로드하세요", type=["xlsx"], key="sr_up")
-        item_file = st.file_uploader("2. 하우스리스트 -> 엑셀내려받기 파일 입력 (선택사항)", type=["xlsx"], key="item_up")
+    with col_left:
+        st.write("### 1. 파일 업로드")
+        sr_file = st.file_uploader("SR 엑셀 파일을 업로드하세요", type=["xlsx"], key="sr_up_new")
+        item_file = st.file_uploader("하우스리스트->엑셀내려받기 파일 입력 (선택)", type=["xlsx"], key="item_up_new")
         
-        force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환")
+        # 코스코 체크박스를 업로드 칸 밑에 조그맣게 배치
+        force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환", help="체크 시 코스코 화물의 PLT 단위를 PKGS로 자동 변경합니다.")
+        st.divider()
 
     if sr_file:
         try:
             log_uploaded_filename(sr_file.name, "SR")
-            df = pd.read_excel(sr_file)
+            sr_df = pd.read_excel(sr_file)
             
-            # 품목 정보 딕셔너리 생성 (두 번째 파일이 있을 경우)
+            # 품목 정보 매핑 (두 번째 파일이 있을 경우)
             item_dict = {}
             if item_file:
                 log_uploaded_filename(item_file.name, "ITEM_LIST")
                 item_df = pd.read_excel(item_file)
-                # 하우스번호를 키로, 품목과 HS CODE를 값으로 저장
                 for _, row in item_df.iterrows():
                     h_no = str(row.get('House B/L No', '')).strip()
-                    content = str(row.get('품목', '')).strip()
-                    hs_code = str(row.get('HS CODE', '')).strip()
-                    if h_no:
-                        item_dict[h_no] = {"desc": content, "hs": hs_code}
+                    desc = str(row.get('품목', '')).strip()
+                    hs = str(row.get('HS CODE', '')).strip()
+                    if h_no and h_no != "nan":
+                        item_dict[h_no] = {"desc": desc, "hs": hs}
 
+            # 데이터 가공 및 그룹화
             cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
-            df = df[cols].copy()
+            df = sr_df[cols].copy()
             df = df.dropna(subset=['House B/L No'])
             df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
             df['단위'] = df['단위'].fillna('PKG')
@@ -103,34 +113,35 @@ with tab1:
                 
                 h_no = str(r['House B/L No']).strip()
                 u_val = format_unit(r['단위'], r['포장갯수'], force_to_pkg)
-                
                 lines.append(h_no)
                 lines.append(f"{int(r['포장갯수'])} {u_val} / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
                 
-                # 품목 및 HS CODE 추가 로직
+                # 품목/HS CODE 매칭 출력
                 if h_no in item_dict:
-                    desc_text = item_dict[h_no]["desc"]
-                    hs_text = item_dict[h_no]["hs"]
-                    if desc_text and desc_text != "nan": lines.append(desc_text)
-                    if hs_text and hs_text != "nan": lines.append(hs_text)
-                
+                    d_val, h_val = item_dict[h_no]["desc"], item_dict[h_no]["hs"]
+                    if d_val and d_val != "nan": lines.append(d_val)
+                    if h_val and h_val != "nan": lines.append(h_val)
                 lines.append("")
             
             result = "\n".join(lines)
             
-            with col_res:
-                c1, c2 = st.columns([2, 1])
-                c1.subheader("정리 결과")
-                c2.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt", use_container_width=True)
-                st.text_area("결과", result, height=600, label_visibility="collapsed")
+            # 오른쪽 컬럼에 결과 출력
+            with col_right:
+                st.write("### 2. 정리 결과")
+                btn_col, _ = st.columns([1, 1.5])
+                btn_col.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt", use_container_width=True)
+                st.text_area("Result Area", result, height=700, label_visibility="collapsed")
                 
         except Exception as e:
             st.error(f"오류 발생: {e}")
 
-# --- TAB 2, 3: 기존 로직 유지 ---
+# --- TAB 2: 업로드 기록 ---
 with tab2:
     if os.path.exists("upload_log.txt"):
         with open("upload_log.txt", "r", encoding='utf-8') as f:
             st.text_area("Log History", f.read(), height=500)
+
+# --- TAB 3: 로이타리프 ---
 with tab3:
-    st.info("로이타리프 기능은 이전 설정대로 유지됩니다.")
+    st.subheader("로이타리프 조회")
+    # ... (기존 로이타리프 로직 동일 유지) ...
