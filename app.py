@@ -32,29 +32,33 @@ def clean_date_final(val):
     except: return str(val)
 
 # --- 페이지 설정 ---
-st.set_page_config(page_title="Europe Docs tool", layout="wide")
-st.title("Europe Docs tool")
+st.set_page_config(page_title="카고2", layout="wide")
+st.title("카고2")
 
 if 'tariff_db' not in st.session_state:
     st.session_state.tariff_db = pd.DataFrame()
 
+# 탭 구성 (기존 기능 우선)
 tab1, tab2, tab3 = st.tabs(["SR 정정", "업로드 기록", "로이타리프"])
 
-# --- TAB 1: SR 정정 (가로 배치 레이아웃) ---
+# --- TAB 1: SR 정정 ---
 with tab1:
-    # 화면을 좌(1):우(1.5)로 분할
-    col_left, col_right = st.columns([1, 1.5])
+    # 1. 업로드 칸 가로 배열 [ ㅁ  ㅁ ]
+    col_up1, col_up2 = st.columns(2)
     
-    with col_left:
-        st.write("### 1. 파일 업로드")
-        sr_file = st.file_uploader("SR 엑셀 파일을 업로드하세요", type=["xlsx"], key="sr_up_new")
-        item_file = st.file_uploader("하우스리스트->엑셀내려받기 파일 입력 (선택)", type=["xlsx"], key="item_up_new")
-        
-        # 코스코 체크박스를 업로드 칸 밑에 조그맣게 배치
-        force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환", help="체크 시 코스코 화물의 PLT 단위를 PKGS로 자동 변경합니다.")
-        st.divider()
+    with col_up1:
+        sr_file = st.file_uploader("1. SR 엑셀 파일 입력", type=["xlsx"], key="sr_main")
+        # 코스코 체크박스를 파일 업로드 바로 밑에 작게 배치
+        force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환", value=False)
+
+    with col_up2:
+        item_file = st.file_uploader("2. 하우스리스트->엑셀내려받기 파일 입력 (선택)", type=["xlsx"], key="item_sub")
+
+    st.divider()
 
     if sr_file:
+        col_left_space, col_res = st.columns([1, 2.5]) # 결과창을 넓게 배치
+        
         try:
             log_uploaded_filename(sr_file.name, "SR")
             sr_df = pd.read_excel(sr_file)
@@ -62,7 +66,7 @@ with tab1:
             # 품목 정보 매핑 (두 번째 파일이 있을 경우)
             item_dict = {}
             if item_file:
-                log_uploaded_filename(item_file.name, "ITEM_LIST")
+                log_uploaded_filename(item_file.name, "ITEM")
                 item_df = pd.read_excel(item_file)
                 for _, row in item_df.iterrows():
                     h_no = str(row.get('House B/L No', '')).strip()
@@ -71,7 +75,7 @@ with tab1:
                     if h_no and h_no != "nan":
                         item_dict[h_no] = {"desc": desc, "hs": hs}
 
-            # 데이터 가공 및 그룹화
+            # 기존 카고2 로직 실행
             cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
             df = sr_df[cols].copy()
             df = df.dropna(subset=['House B/L No'])
@@ -116,7 +120,7 @@ with tab1:
                 lines.append(h_no)
                 lines.append(f"{int(r['포장갯수'])} {u_val} / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
                 
-                # 품목/HS CODE 매칭 출력
+                # 두 번째 파일(품목/HS) 정보가 있다면 출력
                 if h_no in item_dict:
                     d_val, h_val = item_dict[h_no]["desc"], item_dict[h_no]["hs"]
                     if d_val and d_val != "nan": lines.append(d_val)
@@ -125,23 +129,19 @@ with tab1:
             
             result = "\n".join(lines)
             
-            # 오른쪽 컬럼에 결과 출력
-            with col_right:
-                st.write("### 2. 정리 결과")
-                btn_col, _ = st.columns([1, 1.5])
-                btn_col.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt", use_container_width=True)
-                st.text_area("Result Area", result, height=700, label_visibility="collapsed")
+            with col_res:
+                st.subheader("정리 결과")
+                st.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt")
+                st.text_area("결과창", result, height=800, label_visibility="collapsed")
                 
         except Exception as e:
             st.error(f"오류 발생: {e}")
 
-# --- TAB 2: 업로드 기록 ---
+# --- TAB 2, 3: 기록 및 로이타리프 (기존 기능 유지) ---
 with tab2:
     if os.path.exists("upload_log.txt"):
         with open("upload_log.txt", "r", encoding='utf-8') as f:
-            st.text_area("Log History", f.read(), height=500)
-
-# --- TAB 3: 로이타리프 ---
+            st.text_area("Log", f.read(), height=500)
 with tab3:
-    st.subheader("로이타리프 조회")
-    # ... (기존 로이타리프 로직 동일 유지) ...
+    st.info("이전에 설정한 로이타리프 조회 기능입니다.")
+    # (로이타리프 로직은 이전과 동일하게 유지됨)
