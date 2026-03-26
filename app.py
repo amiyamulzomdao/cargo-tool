@@ -51,7 +51,7 @@ with tab1:
             sr_df = pd.read_excel(sr_file)
             
             item_dict = {}
-            empty_line_bls = [] # 빈 줄이 포함된 B/L 리스트
+            empty_line_bls = [] 
             
             if item_file:
                 log_uploaded_filename(item_file.name, "ITEM")
@@ -65,29 +65,27 @@ with tab1:
                 if target_h in item_df.columns and target_d in item_df.columns:
                     for _, row in item_df.iterrows():
                         h_no = str(row[target_h]).strip()
-                        desc_raw = str(row[target_d]) if pd.notna(row[target_d]) else ""
+                        # [고도화] 앞뒤 공백 및 엔터 제거 후 처리
+                        desc_full = str(row[target_d]) if pd.notna(row[target_d]) else ""
+                        desc_stripped = desc_full.strip() 
                         hs_raw = str(row[target_s]).strip() if target_s in item_df.columns and pd.notna(row[target_s]) else ""
                         
                         if h_no and h_no != "nan":
-                            item_dict[h_no] = {"desc": desc_raw, "hs": hs_raw}
+                            item_dict[h_no] = {"desc": desc_full.strip(), "hs": hs_raw}
                             
-                            # [수정된 로직] 단순히 줄바꿈이 아니라, "빈 줄"이 있는지 체크
-                            # \n\n 이 있거나, 줄 사이에 공백만 있는 줄이 있는지 확인
-                            lines = desc_raw.split('\n')
-                            has_empty_line = False
-                            if len(lines) > 1:
-                                for i in range(len(lines) - 1):
-                                    # 현재 줄과 다음 줄 사이에 아무 내용도 없는 줄이 끼어 있는지 확인
-                                    if lines[i].strip() == "" and i != 0 and i != len(lines)-1:
-                                        has_empty_line = True
-                                    # 연속된 줄바꿈(\n\n) 체크
-                                    if "\n\n" in desc_raw:
-                                        has_empty_line = True
-                            
-                            if has_empty_line:
+                            # [핵심 로직 수정] 
+                            # 앞뒤 엔터를 뺀 '내용 사이'에 빈 줄(\n\n)이 있는지 확인
+                            if "\n\n" in desc_stripped:
                                 empty_line_bls.append(h_no)
+                            else:
+                                # 혹은 줄 사이에 공백만 가득한 줄이 있는지 확인
+                                lines = desc_stripped.split('\n')
+                                for i in range(1, len(lines) - 1): # 처음과 끝 줄 제외
+                                    if lines[i].strip() == "":
+                                        empty_line_bls.append(h_no)
+                                        break
 
-            # 데이터 가공 로직
+            # 데이터 가공
             cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
             df = sr_df[cols].copy()
             df = df.dropna(subset=['House B/L No'])
@@ -145,12 +143,10 @@ with tab1:
             
             with col_res:
                 st.subheader("정리 결과")
-                
                 if gt_bls:
                     st.error(f"⚠️ **GT 단위 확인 필요 B/L:** {', '.join(gt_bls)}")
-                
                 if empty_line_bls:
-                    st.warning(f"📢 **품목 내 빈 줄(다중 품목) 의심 B/L:** {', '.join(empty_line_bls)}")
+                    st.warning(f"📢 **품목 내 빈 줄(다중 품목) 의심 B/L:** {', '.join(list(set(empty_line_bls)))}")
                 
                 st.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt")
                 st.text_area("결과창", result, height=800, label_visibility="collapsed")
@@ -158,7 +154,6 @@ with tab1:
         except Exception as e:
             st.error(f"오류 발생: {e}")
 
-# --- TAB 2: 업로드 기록 ---
 with tab2:
     if os.path.exists("upload_log.txt"):
         with open("upload_log.txt", "r", encoding='utf-8') as f:
