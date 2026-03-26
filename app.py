@@ -24,22 +24,12 @@ def log_uploaded_filename(fn, category="SR"):
     entry = f"[{now}] ({category}) {fn}\n"
     with open(p, "a", encoding='utf-8') as f: f.write(entry)
 
-def clean_date_final(val):
-    if pd.isna(val) or val == "": return ""
-    try:
-        dt = pd.to_datetime(val)
-        return dt.strftime("%d-%b-%Y")
-    except: return str(val)
-
 # --- 페이지 설정 ---
 st.set_page_config(page_title="카고2", layout="wide")
 st.title("카고2")
 
-if 'tariff_db' not in st.session_state:
-    st.session_state.tariff_db = pd.DataFrame()
-
-# 탭 구성 (기존 기능 우선)
-tab1, tab2, tab3 = st.tabs(["SR 정정", "업로드 기록", "로이타리프"])
+# 탭 구성 (요청하신 대로 2개만 유지)
+tab1, tab2 = st.tabs(["SR 정정", "업로드 기록"])
 
 # --- TAB 1: SR 정정 ---
 with tab1:
@@ -57,7 +47,8 @@ with tab1:
     st.divider()
 
     if sr_file:
-        col_left_space, col_res = st.columns([1, 2.5]) # 결과창을 넓게 배치
+        # 결과창 레이아웃
+        col_left_space, col_res = st.columns([1, 2.5])
         
         try:
             log_uploaded_filename(sr_file.name, "SR")
@@ -68,6 +59,7 @@ with tab1:
             if item_file:
                 log_uploaded_filename(item_file.name, "ITEM")
                 item_df = pd.read_excel(item_file)
+                # aa.xlsx 구조에 맞춰 'House B/L No', '품목', 'HS CODE' 추출
                 for _, row in item_df.iterrows():
                     h_no = str(row.get('House B/L No', '')).strip()
                     desc = str(row.get('품목', '')).strip()
@@ -75,7 +67,7 @@ with tab1:
                     if h_no and h_no != "nan":
                         item_dict[h_no] = {"desc": desc, "hs": hs}
 
-            # 기존 카고2 로직 실행
+            # 기본 카고2 로직
             cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
             df = sr_df[cols].copy()
             df = df.dropna(subset=['House B/L No'])
@@ -120,7 +112,7 @@ with tab1:
                 lines.append(h_no)
                 lines.append(f"{int(r['포장갯수'])} {u_val} / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
                 
-                # 두 번째 파일(품목/HS) 정보가 있다면 출력
+                # 추가 품목 정보가 있다면 출력
                 if h_no in item_dict:
                     d_val, h_val = item_dict[h_no]["desc"], item_dict[h_no]["hs"]
                     if d_val and d_val != "nan": lines.append(d_val)
@@ -137,11 +129,11 @@ with tab1:
         except Exception as e:
             st.error(f"오류 발생: {e}")
 
-# --- TAB 2, 3: 기록 및 로이타리프 (기존 기능 유지) ---
+# --- TAB 2: 업로드 기록 ---
 with tab2:
     if os.path.exists("upload_log.txt"):
         with open("upload_log.txt", "r", encoding='utf-8') as f:
             st.text_area("Log", f.read(), height=500)
-with tab3:
-    st.info("이전에 설정한 로이타리프 조회 기능입니다.")
-    # (로이타리프 로직은 이전과 동일하게 유지됨)
+        if st.button("로그 비우기"):
+            os.remove("upload_log.txt")
+            st.rerun()
