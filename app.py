@@ -42,7 +42,7 @@ def clean_rating_date(val):
         return "ETD of proforma schedule"
     return v_str
 
-# --- 표 스타일링 (에러 방지 강화) ---
+# --- 표 스타일링 (안전한 인덱스 참조 방식) ---
 def style_tariff(row):
     # 선사별 색상 매핑
     colors = {
@@ -53,19 +53,19 @@ def style_tariff(row):
         'MSC': 'background-color: #FFF3E0',
         'HPL': 'background-color: #F1F8E9'
     }
-    # 강조할 열 리스트 (실제 컬럼명과 대조)
+    # 강조할 열 리스트
     yellow_cols = ['START DATE', 'Validity', "20'gp", "40'gp", "40'HQ"]
     
-    styles = []
-    # Carrier 정보 안전하게 가져오기
+    # 선사 색상 결정 (안전하게 get 사용)
     carrier_val = str(row.get('Carrier', '')).upper()[:3]
-    base_color = colors.get(carrier_val, '')
+    base_style = colors.get(carrier_val, '')
     
+    styles = []
     for col_name in row.index:
         if col_name in yellow_cols:
             styles.append('background-color: #FFF9C4') # 노란색 강조
         else:
-            styles.append(base_color) # 선사별 배경색
+            styles.append(base_style) # 선사별 배경색
     return styles
 
 # --- 페이지 설정 ---
@@ -163,10 +163,10 @@ with tab3:
     if t_file:
         try:
             log_uploaded_filename(t_file.name, "Tariff")
-            # FAK 시트의 데이터 헤더가 5번 행(index 4)인지 확인
+            # FAK 시트 고정 읽기
             df_t = pd.read_excel(t_file, sheet_name='FAK', header=4)
             
-            # 엑셀 열 추출: B, C, F, I, J, K, L, M, N, Q
+            # 정확한 열 추출 (인덱스: B=1, C=2, F=5, I=8, J=9, K=10, L=11, M=12, N=13, Q=16)
             target_idx = [1, 2, 5, 8, 9, 10, 11, 12, 13, 16] 
             extracted = df_t.iloc[:, target_idx].copy()
             extracted.columns = ['POL', 'POD', 'Carrier', 'START DATE', 'Validity', 'Carrier\nRating date', "20'gp", "40'gp", "40'HQ", "Surcharge"]
@@ -174,26 +174,24 @@ with tab3:
             # 부산 필터링
             extracted = extracted[extracted['POL'].fillna('').astype(str).str.contains("BUSAN", case=False)]
             
-            # 날짜 및 문구 가공
+            # 데이터 가공
             extracted['START DATE'] = extracted['START DATE'].apply(clean_date)
             extracted['Validity'] = extracted['Validity'].apply(clean_date)
             extracted['Carrier\nRating date'] = extracted['Carrier\nRating date'].apply(clean_rating_date)
             
-            # 금액 정수화 + USD 표기
             for col in ["20'gp", "40'gp", "40'HQ"]:
                 extracted[col] = extracted[col].apply(lambda x: f"USD {int(float(x))}" if pd.notna(x) and str(x).replace('.','').replace(',','').isdigit() else x)
             
-            # Surcharge 줄바꿈
             extracted['Surcharge'] = extracted['Surcharge'].astype(str).str.replace('EFS', '\nEFS', regex=False)
-
             extracted['파일명'] = t_file.name
+
+            # 누적
             st.session_state.tariff_history = pd.concat([extracted, st.session_state.tariff_history]).drop_duplicates()
 
         except Exception as e:
             st.error(f"데이터 처리 오류: {e}")
 
     if not st.session_state.tariff_history.empty:
-        # 선사 리스트 추출
         carriers = sorted(st.session_state.tariff_history['Carrier'].dropna().unique())
         with col_t3: sel_carrier = st.selectbox("Carrier 선택", ["전체"] + list(carriers))
 
@@ -202,11 +200,13 @@ with tab3:
         if sel_carrier != "전체": res_df = res_df[res_df['Carrier'] == sel_carrier]
 
         st.write("---")
-        # 데이터가 있을 때만 스타일 적용하여 출력
+        # 데이터가 존재할 때만 스타일 적용
         if not res_df.empty:
-            st.dataframe(res_df.style.apply(style_tariff, axis=1), use_container_width=True)
+            # 안전하게 데이터프레임을 초기화하여 스타일 적용 (KeyError 방지)
+            styled_df = res_df.reset_index(drop=True).style.apply(style_tariff, axis=1)
+            st.dataframe(styled_df, use_container_width=True)
         else:
-            st.info("조건에 맞는 운임 데이터가 없습니다.")
+            st.info("조건에 맞는 데이터가 없습니다.")
         
         if st.button("기록 초기화"):
             st.session_state.tariff_history = pd.DataFrame()
