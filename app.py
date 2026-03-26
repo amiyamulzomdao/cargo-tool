@@ -57,7 +57,7 @@ with tab1:
             
             if item_file:
                 log_uploaded_filename(item_file.name, "ITEM")
-                # aaaaa.xlsx 구조 반영 (2행부터 데이터 시작)
+                # 2행(header=1)부터 데이터 시작 반영
                 item_df = pd.read_excel(item_file, header=1)
                 item_df.columns = [str(c).strip() for c in item_df.columns]
                 
@@ -149,7 +149,8 @@ with tab1:
                 
                 if empty_line_bls:
                     bl_list_str = ', '.join(list(set(empty_line_bls)))
-                    st.warning(f"📢 **품목 내 빈 줄(다중 품목) 의심 B/L:** {bl_list_str} -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
+                    # 요청하신 '다중 품목 의심' 문구 적용
+                    st.warning(f"📢 **다중 품목 의심 B/L:** {bl_list_str} -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
                 
                 st.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt")
                 st.text_area("결과창", result, height=800, label_visibility="collapsed")
