@@ -24,16 +24,21 @@ def log_uploaded_filename(fn, category="SR"):
     entry = f"[{now}] ({category}) {fn}\n"
     with open(p, "a", encoding='utf-8') as f: f.write(entry)
 
+# --- 표 색상 강조 함수 ---
+def highlight_tariff(s):
+    # 강조할 열 리스트 (헤더 이름 기준)
+    yellow_cols = ['S/DATE', 'VALIDITY', '20GP', '40GP', '40HC']
+    return ['background-color: #FFF9C4' if s.name in yellow_cols else '' for _ in s]
+
 # --- 페이지 설정 ---
 st.set_page_config(page_title="Cargo Master v3", layout="wide")
 st.title("Cargo Master v3")
 
-# 세션 상태 초기화
+# 세션 상태 초기화 (누적 데이터 보관용)
 if 'tariff_history' not in st.session_state:
     st.session_state.tariff_history = pd.DataFrame()
 
-# 탭 순서 변경: SR 정정 -> 업로드 기록 -> 로이타리프
-tab1, tab2, tab3 = st.tabs(["SR 정정", "업로드 기록", "로이타리프 (실험중)"])
+tab1, tab2, tab3 = st.tabs(["SR 정정", "업로드 기록", "로이타리프"])
 
 # --- TAB 1: SR 정정 ---
 with tab1:
@@ -45,12 +50,11 @@ with tab1:
             force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환")
             st.info(f"파일: {main_file.name}")
         try:
-            log_uploaded_filename(main_file.name, "SR") # SR 기록
+            log_uploaded_filename(main_file.name, "SR")
             df = pd.read_excel(main_file)
             cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
             df = df[cols].copy()
             df = df.dropna(subset=['House B/L No'])
-            has_gt = df['단위'].fillna('').astype(str).str.upper().str.contains('GT').any()
             df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
             df['단위'] = df['단위'].fillna('PKG')
             
@@ -93,69 +97,83 @@ with tab1:
                 c1, c2 = st.columns([2, 1])
                 c1.subheader("정리 결과")
                 c2.download_button("💾 메모장 다운로드", result, f"SR_{main_file.name.split('.')[0]}.txt", use_container_width=True)
-                if has_gt: st.error("⚠️ *GT 단위가 있습니다. 데이터 확인이 필요합니다.*")
                 st.text_area("결과", result, height=600, label_visibility="collapsed")
         except Exception as e: st.error(f"오류 발생: {e}")
-    else: st.write("")
 
 # --- TAB 2: 업로드 기록 ---
 with tab2:
     st.subheader("📁 통합 업로드 이력")
     if os.path.exists("upload_log.txt"):
         with open("upload_log.txt", "r", encoding='utf-8') as f:
-            log_data = f.read()
-        st.text_area("로그 데이터 (SR 및 타리프)", log_data, height=500)
-        if st.button("로그 기록 비우기"):
+            st.text_area("로그 데이터", f.read(), height=500)
+        if st.button("로그 비우기"):
             os.remove("upload_log.txt")
             st.rerun()
-    else:
-        st.info("아직 기록된 업로드 이력이 없습니다.")
+    else: st.info("기록이 없습니다.")
 
-# --- TAB 3: 로이타리프 (실험중) ---
+# --- TAB 3: 로이타리프 ---
 with tab3:
-    st.subheader("📊 Loy Tariff - 운임 추적기 (실험중)")
+    st.subheader("📊 Loy Tariff - 운임 추적기")
     
+    # 설정 레이아웃
     col_t1, col_t2, col_t3 = st.columns(3)
-    with col_t1: st.text_input("POL (B5)", value="BUSAN", disabled=True)
+    with col_t1: st.text_input("POL 고정", value="BUSAN", disabled=True)
     with col_t2:
-        pods = ["Hamburg", "Rotterdam", "Antwerp", "Le Havre", "Barcelona", "Valencia", "FOS", "Genoa", "Koper", "Istanbul", "Izmit", "Southampton", "Aarhus", "Constanta", "Gdansk", "Budapest"]
-        sel_pod = st.selectbox("POD 선택 (C5)", ["전체"] + pods)
-    with col_t3:
-        sel_carrier = st.text_input("CARRIER 검색 (F5)", placeholder="선사명 입력")
-
-    t_file = st.file_uploader("타리프 엑셀 파일을 업로드하세요", type=["xlsx"], key="tariff_upload")
+        pods = sorted(["Hamburg", "Rotterdam", "Antwerp", "Le Havre", "Barcelona", "Valencia", "FOS", "Genoa", "Koper", "Istanbul", "Izmit", "Southampton", "Aarhus", "Constanta", "Gdansk", "Budapest"])
+        sel_pod = st.selectbox("POD 선택", ["전체"] + pods)
+    
+    t_file = st.file_uploader("타리프 엑셀 업로드 (자동 누적)", type=["xlsx"], key="tariff_upload")
     
     if t_file:
         try:
-            log_uploaded_filename(t_file.name, "Tariff") # 타리프 기록 추가
-            df_t = pd.read_excel(t_file, header=4)
-            # 데이터 추출 (B, C, F 열 및 H~U 열)
-            selected_cols = df_t.iloc[:, [1, 2, 5] + list(range(7, 21))] 
-            selected_cols.columns = ['POL', 'POD', 'CARRIER'] + list(df_t.columns[7:21])
+            log_uploaded_filename(t_file.name, "Tariff")
+            # ECU FAK 시트 기준, 5번 행(index 4)이 헤더
+            raw_data = pd.read_excel(t_file, sheet_name='FAK', header=4)
             
-            filtered_df = selected_cols.copy()
-            if sel_pod != "전체":
-                filtered_df = filtered_df[filtered_df['POD'].astype(str).str.contains(sel_pod, case=False, na=False)]
-            if sel_carrier:
-                filtered_df = filtered_df[filtered_df['CARRIER'].astype(str).str.contains(sel_carrier, case=False, na=False)]
+            # 정확한 열 인덱스 추출: B(1), C(2), F(5), H(7)~U(20)
+            target_idx = [1, 2, 5] + list(range(7, 21))
+            extracted = raw_data.iloc[:, target_idx].copy()
             
-            filtered_df['업로드일시'] = datetime.now().strftime("%m-%d %H:%M")
-            filtered_df['파일명'] = t_file.name
+            # 헤더 명칭 정리
+            new_headers = ['POL', 'POD', 'CARRIER', 'CONTRACT', 'S/DATE', 'VALIDITY', 'DEPARTURE', '20GP', '40GP', '40HC', '45HC', '40NOR', 'ETS/EFS', 'PAYMENT', 'FREE TIME', 'REMARK', 'OWS']
+            extracted.columns = new_headers
+            
+            # 1. POL 부산 필터링
+            extracted = extracted[extracted['POL'].fillna('').astype(str).str.contains("BUSAN", case=False)]
+            
+            # 2. 운임 숫자 뒤에 USD 추가
+            fare_cols = ['20GP', '40GP', '40HC', '45HC', '40NOR']
+            for col in fare_cols:
+                extracted[col] = extracted[col].apply(lambda x: f"{x} USD" if pd.notna(x) and str(x).replace('.','').replace(',','').isdigit() else x)
 
-            if st.button("현재 데이터 누적하기"):
-                st.session_state.tariff_history = pd.concat([filtered_df, st.session_state.tariff_history]).drop_duplicates()
-                st.success("운임 데이터가 누적되었습니다!")
+            # 파일명 및 시간 추가
+            extracted['파일명'] = t_file.name
+            extracted['확인일시'] = datetime.now().strftime("%m-%d %H:%M")
 
-            st.write("### 🔍 필터링 결과")
-            st.dataframe(filtered_df, use_container_width=True)
+            # 자동 누적 (최신 데이터를 위로)
+            st.session_state.tariff_history = pd.concat([extracted, st.session_state.tariff_history]).drop_duplicates(subset=['POD','CARRIER','S/DATE','파일명'], keep='first')
 
         except Exception as e:
-            st.error(f"타리프 처리 중 오류 발생: {e}")
+            st.error(f"파일 처리 오류: {e}. 'FAK' 시트가 있는지 확인해 주세요.")
 
+    # 결과 출력
     if not st.session_state.tariff_history.empty:
+        all_carriers = sorted(st.session_state.tariff_history['CARRIER'].dropna().unique().astype(str))
+        with col_t3:
+            sel_carrier = st.selectbox("CARRIER 선택", ["전체"] + all_carriers)
+
+        display_df = st.session_state.tariff_history.copy()
+        if sel_pod != "전체":
+            display_df = display_df[display_df['POD'].astype(str).str.contains(sel_pod, case=False, na=False)]
+        if sel_carrier != "전체":
+            display_df = display_df[display_df['CARRIER'] == sel_carrier]
+
         st.write("---")
-        st.write("### 📜 누적 데이터 (비교용)")
-        st.dataframe(st.session_state.tariff_history, use_container_width=True)
-        if st.button("누적 기록 초기화"):
+        st.write(f"### 📋 운임 비교 리스트 (노란색: 주요 운임 정보)")
+        
+        # 스타일 적용 (노란색 하이라이트)
+        st.dataframe(display_df.style.apply(highlight_tariff, axis=0), use_container_width=True)
+        
+        if st.button("전체 누적 기록 초기화"):
             st.session_state.tariff_history = pd.DataFrame()
             st.rerun()
