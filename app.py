@@ -98,30 +98,35 @@ with tab1:
             lines = []
             single = (len(total) == 1)
             
+            # --- 상단 TOTAL 영역 ---
             if not single:
                 g_p = int(total['포장갯수'].sum())
                 total_line = f"TOTAL: {g_p} PKGS / {format_number(total['Weight'].sum())} KGS / {format_number(total['Measure'].sum())} CBM"
-                lines.extend(["[GRAND TOTAL]", total_line, "-" * (len(total_line) + 10), "", ""]) # 두 줄 추가
+                lines.extend(["[GRAND TOTAL]", total_line, "-" * (len(total_line) + 10)]) 
+                # 그랜드 토탈 밑에 있던 불필요한 빈 줄 제거
             
             for _, r in total.iterrows():
+                lines.append("") # 컨테이너 정보 시작 전 한 줄 띄움
                 lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
                 lines.append(f"TOTAL: {int(r['포장갯수'])} PKGS / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
-                lines.append("") # 컨테이너 간 간격
             
-            lines.extend(["", "<MARK>", ""]) # MARK 시작 전 간격 확보
+            # --- MARK 영역 ---
+            lines.extend(["", "", "<MARK>", ""]) 
             for _, r in marks.iterrows():
-                lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}\n")
+                lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
                 for hbl in sorted(r['House B/L No']):
                     lines.append(hbl)
                     if single: lines.append("")
-                lines.append("") # MARK 컨테이너 간 간격
+                lines.append("") # 컨테이너 간 간격
             
-            lines.extend(["", "", "<DESCRIPTION>", ""]) # DESCRIPTION 시작 전 두 줄 추가
+            # --- DESCRIPTION 영역 ---
+            lines.extend(["", "<DESCRIPTION>", ""]) 
             prev = (None, None)
             for _, r in desc_df.iterrows():
                 cur = (r['컨테이너 번호'], r['Seal#1'])
                 if cur != prev:
-                    if prev[0] is not None: lines.extend(["", "", ""]) # 컨테이너 바뀔 때 두 줄 더 띄움
+                    # 컨테이너가 바뀔 때만 두 줄 띄움
+                    if prev[0] is not None: lines.extend(["", ""]) 
                     if not single: lines.extend([f"{cur[0]} / {cur[1]}", ""])
                     prev = cur
                 
