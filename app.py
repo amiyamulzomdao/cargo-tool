@@ -25,7 +25,7 @@ def log_uploaded_filename(fn, category="SR"):
     entry = f"[{now}] ({category}) {fn}\n"
     with open(p, "a", encoding='utf-8') as f: f.write(entry)
 
-# --- 3. 페이지 기본 설정 (이모티콘 추가) ---
+# --- 3. 페이지 기본 설정 ---
 st.set_page_config(page_title="Europe Docs tool", layout="wide")
 st.title("🚢 Europe Docs tool")
 
@@ -41,7 +41,6 @@ with tab1:
         force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환", value=False)
 
     with col_up2:
-        # 요청하신 최종 문구 반영
         item_file = st.file_uploader("2. 하우스리스트->엑셀내려받기 파일 입력(품목명, HS CODE 입력 가능)_선택사항", type=["xlsx"], key="item_sub")
 
     st.divider()
@@ -58,7 +57,6 @@ with tab1:
             
             if item_file:
                 log_uploaded_filename(item_file.name, "ITEM")
-                # 2행(header=1)부터 데이터 시작
                 item_df = pd.read_excel(item_file, header=1)
                 item_df.columns = [str(c).strip() for c in item_df.columns]
                 
@@ -72,7 +70,6 @@ with tab1:
                         if h_no and h_no != "nan":
                             item_dict[h_no] = {"desc": desc_full.strip(), "hs": hs_raw}
                             
-                            # 내용 중간 빈 줄 감지 (양끝 공백 무시)
                             has_inner_empty = False
                             if "\n\n" in desc_stripped:
                                 has_inner_empty = True
@@ -85,12 +82,10 @@ with tab1:
                             if has_inner_empty:
                                 empty_line_bls.append(h_no)
 
-            # --- SR 데이터 가공 ---
             cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
             df = sr_df[cols].copy()
             df = df.dropna(subset=['House B/L No'])
             
-            # GT 단위 체크
             gt_bls = df[df['단위'].fillna('').astype(str).str.upper().str.contains('GT')]['House B/L No'].unique().tolist()
             
             df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
@@ -106,32 +101,32 @@ with tab1:
             if not single:
                 g_p = int(total['포장갯수'].sum())
                 total_line = f"TOTAL: {g_p} PKGS / {format_number(total['Weight'].sum())} KGS / {format_number(total['Measure'].sum())} CBM"
-                lines.extend(["[GRAND TOTAL]", total_line, "-" * (len(total_line) + 10), ""])
+                lines.extend(["[GRAND TOTAL]", total_line, "-" * (len(total_line) + 10), "", ""]) # 두 줄 추가
             
             for _, r in total.iterrows():
                 lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
-                lines.append(f"TOTAL: {int(r['포장갯수'])} PKGS / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM\n")
+                lines.append(f"TOTAL: {int(r['포장갯수'])} PKGS / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
+                lines.append("") # 컨테이너 간 간격
             
-            lines.append("<MARK>\n")
+            lines.extend(["", "<MARK>", ""]) # MARK 시작 전 간격 확보
             for _, r in marks.iterrows():
                 lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}\n")
                 for hbl in sorted(r['House B/L No']):
                     lines.append(hbl)
                     if single: lines.append("")
-                lines.append("")
+                lines.append("") # MARK 컨테이너 간 간격
             
-            lines.extend(["<DESCRIPTION>", ""])
+            lines.extend(["", "", "<DESCRIPTION>", ""]) # DESCRIPTION 시작 전 두 줄 추가
             prev = (None, None)
             for _, r in desc_df.iterrows():
                 cur = (r['컨테이너 번호'], r['Seal#1'])
                 if cur != prev:
-                    if prev[0] is not None: lines.extend(["", ""])
+                    if prev[0] is not None: lines.extend(["", "", ""]) # 컨테이너 바뀔 때 두 줄 더 띄움
                     if not single: lines.extend([f"{cur[0]} / {cur[1]}", ""])
                     prev = cur
                 
                 h_no_raw = str(r['House B/L No']).strip()
                 u_val = format_unit(r['단위'], r['포장갯수'], force_to_pkg)
-                
                 lines.append(h_no_raw)
                 lines.append(f"{int(r['포장갯수'])} {u_val} / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
                 
@@ -145,10 +140,8 @@ with tab1:
             
             with col_res:
                 st.subheader("정리 결과")
-                
                 if gt_bls:
                     st.error(f"⚠️ **GT 단위 확인 필요 B/L:** {', '.join(gt_bls)}")
-                
                 if empty_line_bls:
                     bl_list_str = ', '.join(list(set(empty_line_bls)))
                     st.warning(f"📢 **다중 품목 의심 B/L:** {bl_list_str} -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
