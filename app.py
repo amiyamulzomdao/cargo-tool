@@ -39,6 +39,8 @@ with tab1:
     with col_up1:
         sr_file = st.file_uploader("1. SR 엑셀 파일 입력", type=["xlsx"], key="sr_main")
         force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환", value=False)
+        # 요청하신 이름으로 체크박스 수정
+        mark_spacing = st.checkbox("MARK 란 간격 띄우기", value=False)
 
     with col_up2:
         item_file = st.file_uploader("2. 하우스리스트->엑셀내려받기 파일 입력(품목명, HS CODE 입력 가능)_선택사항", type=["xlsx"], key="item_sub")
@@ -57,6 +59,7 @@ with tab1:
             
             if item_file:
                 log_uploaded_filename(item_file.name, "ITEM")
+                # 2행(header=1)부터 데이터 시작
                 item_df = pd.read_excel(item_file, header=1)
                 item_df.columns = [str(c).strip() for c in item_df.columns]
                 
@@ -70,6 +73,7 @@ with tab1:
                         if h_no and h_no != "nan":
                             item_dict[h_no] = {"desc": desc_full.strip(), "hs": hs_raw}
                             
+                            # 내용 중간 빈 줄 감지
                             has_inner_empty = False
                             if "\n\n" in desc_stripped:
                                 has_inner_empty = True
@@ -98,6 +102,7 @@ with tab1:
             lines = []
             single = (len(total) == 1)
             
+            # --- 상단 TOTAL 영역 ---
             if not single:
                 g_p = int(total['포장갯수'].sum())
                 total_line = f"TOTAL: {g_p} PKGS / {format_number(total['Weight'].sum())} KGS / {format_number(total['Measure'].sum())} CBM"
@@ -108,21 +113,27 @@ with tab1:
                 lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
                 lines.append(f"TOTAL: {int(r['포장갯수'])} PKGS / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
             
+            # --- MARK 영역 ---
             lines.extend(["", "", "<MARK>", ""]) 
             for _, r in marks.iterrows():
                 lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
                 lines.append("") 
                 for hbl in sorted(r['House B/L No']):
                     lines.append(hbl)
-                lines.append("") 
+                    # 1대일 때 '간격 띄우기' 체크하면 BL 사이 빈 줄 추가
+                    if single and mark_spacing:
+                        lines.append("")
+                if not (single and mark_spacing):
+                    lines.append("") 
             
+            # --- DESCRIPTION 영역 ---
             lines.extend(["", "<DESCRIPTION>", ""]) 
             prev = (None, None)
             for _, r in desc_df.iterrows():
                 cur = (r['컨테이너 번호'], r['Seal#1'])
                 if cur != prev:
                     if prev[0] is not None: lines.extend(["", ""]) 
-                    # 컨테이너 정보(번호 / 실)를 1대일 때도 항상 출력하도록 수정
+                    # 1대일 때도 컨테이너 정보 항상 표시
                     lines.extend([f"{cur[0]} / {cur[1]}", ""])
                     prev = cur
                 
