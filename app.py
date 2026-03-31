@@ -98,34 +98,29 @@ with tab1:
             lines = []
             single = (len(total) == 1)
             
-            # --- 상단 TOTAL 영역 ---
             if not single:
                 g_p = int(total['포장갯수'].sum())
                 total_line = f"TOTAL: {g_p} PKGS / {format_number(total['Weight'].sum())} KGS / {format_number(total['Measure'].sum())} CBM"
                 lines.extend(["[GRAND TOTAL]", total_line, "-" * (len(total_line) + 10)]) 
-                # 그랜드 토탈 밑에 있던 불필요한 빈 줄 제거
             
             for _, r in total.iterrows():
-                lines.append("") # 컨테이너 정보 시작 전 한 줄 띄움
+                lines.append("") 
                 lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
                 lines.append(f"TOTAL: {int(r['포장갯수'])} PKGS / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
             
-            # --- MARK 영역 ---
             lines.extend(["", "", "<MARK>", ""]) 
             for _, r in marks.iterrows():
                 lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
+                lines.append("") # 컨테이너 정보와 하우스 번호 사이 한 줄 띄움 (요청사항 반영)
                 for hbl in sorted(r['House B/L No']):
                     lines.append(hbl)
-                    if single: lines.append("")
-                lines.append("") # 컨테이너 간 간격
+                lines.append("") 
             
-            # --- DESCRIPTION 영역 ---
             lines.extend(["", "<DESCRIPTION>", ""]) 
             prev = (None, None)
             for _, r in desc_df.iterrows():
                 cur = (r['컨테이너 번호'], r['Seal#1'])
                 if cur != prev:
-                    # 컨테이너가 바뀔 때만 두 줄 띄움
                     if prev[0] is not None: lines.extend(["", ""]) 
                     if not single: lines.extend([f"{cur[0]} / {cur[1]}", ""])
                     prev = cur
@@ -157,7 +152,6 @@ with tab1:
         except Exception as e:
             st.error(f"오류 발생: {e}")
 
-# --- TAB 2: 업로드 기록 ---
 with tab2:
     st.subheader("파일 업로드 이력")
     if os.path.exists("upload_log.txt"):
