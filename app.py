@@ -140,10 +140,14 @@ with tab2:
     if os.path.exists("upload_log.txt"):
         with open("upload_log.txt", "r", encoding='utf-8') as f: st.text_area("Log", f.read(), height=500)
 
-# --- TAB 3: CBM & 서차지 계산 (카고4 실험 - 단가 안내 최적화) ---
+# --- TAB 3: CBM & 서차지 계산 (카고4 실험 - 단위 선택 기능) ---
 with tab3:
     if 'boxes' not in st.session_state:
         st.session_state.boxes = [{'h': '0', 'w': '0', 'l': '0', 'q': '1'}]
+
+    # 단위 선택 라디오 버튼
+    unit_mode = st.radio("입력 단위 선택", ["cm", "mm"], horizontal=True, key="unit_select")
+    divisor = 100.0 if unit_mode == "cm" else 1000.0
 
     left_calc, right_calc = st.columns(2, gap="large")
 
@@ -161,13 +165,15 @@ with tab3:
         for i, box in enumerate(st.session_state.boxes):
             st.markdown(f"**Box #{i+1}**")
             r1, r2, r3, r4 = st.columns(4)
-            with r1: h = st.text_input(f"높이(cm)", value=box['h'], key=f"h_{i}")
-            with r2: w = st.text_input(f"가로(cm)", value=box['w'], key=f"w_{i}")
-            with r3: l = st.text_input(f"세로(cm)", value=box['l'], key=f"l_{i}")
+            # 단위 라벨이 동적으로 바뀜
+            with r1: h = st.text_input(f"높이({unit_mode})", value=box['h'], key=f"h_{i}")
+            with r2: w = st.text_input(f"가로({unit_mode})", value=box['w'], key=f"w_{i}")
+            with r3: l = st.text_input(f"세로({unit_mode})", value=box['l'], key=f"l_{i}")
             with r4: q = st.text_input(f"수량", value=box['q'], key=f"q_{i}")
             
             st.session_state.boxes[i] = {'h': h, 'w': w, 'l': l, 'q': q}
-            row_cbm = (safe_float(h)/100) * (safe_float(w)/100) * (safe_float(l)/100) * safe_float(q)
+            # 선택된 단위(divisor)에 따라 미터(m)로 변환
+            row_cbm = (safe_float(h)/divisor) * (safe_float(w)/divisor) * (safe_float(l)/divisor) * safe_float(q)
             total_sum_cbm += row_cbm
 
         st.markdown(f'''
@@ -179,20 +185,17 @@ with tab3:
 
     with right_calc:
         st.subheader("💰 서차지 계산")
-        # 요청하신 문구로 수정 완료
-        is_active = st.checkbox("서차지 계산 활성화 (1PLT 기준)", key="f_active_v4_plt")
+        is_active = st.checkbox("서차지 계산 활성화 (1PLT 기준)", key="f_active_v4_unit")
         
         if is_active:
-            st.caption("$(2.5 - \\text{높이}) \\times \\text{가로} \\times \\text{세로} \\times \\text{운임}$ (1개당 단가)")
-            # 첫 번째 박스 규격 기준
+            st.caption(f"$(2.5 - \\text{{높이(m)}}) \\times \\text{{가로(m)}} \\times \\text{{세로(m)}} \\times \\text{{운임}}$")
             ref_box = st.session_state.boxes[0]
-            ref_h = safe_float(ref_box['h']) / 100
-            ref_w = safe_float(ref_box['w']) / 100
-            ref_l = safe_float(ref_box['l']) / 100
+            # 서차지도 선택된 단위에 맞춰 자동 변환
+            ref_h = safe_float(ref_box['h']) / divisor
+            ref_w = safe_float(ref_box['w']) / divisor
+            ref_l = safe_float(ref_box['l']) / divisor
             
-            ocean_rate_raw = st.text_input("운임($)", value="0", key="f_rate_v4_plt")
-            
-            # 1개당 단가 계산 (수량 제외)
+            ocean_rate_raw = st.text_input("운임($)", value="0", key="f_rate_v4_unit")
             stack_sc_usd = (2.5 - ref_h) * ref_w * ref_l * safe_float(ocean_rate_raw) if ref_h > 0 else 0
 
             st.markdown(f'''
@@ -201,7 +204,7 @@ with tab3:
                     <div class="result-value-final sc-value">$ {stack_sc_usd:,.2f}</div>
                 </div>
             ''', unsafe_allow_html=True)
-            st.info(f"💡 Box #1 규격(H:{ref_box['h']}cm)을 기준으로 산출된 개당 서차지입니다.")
+            st.info(f"💡 Box #1 규격({unit_mode}:{ref_box['h']}) 기준, 미터 변환 후 산출된 단가입니다.")
         else:
             st.info("단가 안내가 필요하면 위 체크박스를 선택하세요.")
 
