@@ -3,7 +3,7 @@ import pandas as pd
 import os
 from datetime import datetime
 
-# --- 1. 숫자 및 단위 정리 함수 (카고3 동일) ---
+# --- 1. 유틸리티 함수 (카고3 동일) ---
 def format_unit(unit, count, force_to_pkg=False):
     u_str = str(unit).upper() if pd.notna(unit) else "PKG"
     m = {'PK':'PKG', 'PL':'PLT', 'CT':'CTN'}
@@ -18,26 +18,23 @@ def format_number(v):
         return t.rstrip('0').rstrip('.') if '.' in t else t
     except: return str(v)
 
-# --- 2. 업로드 기록 저장 함수 ---
 def log_uploaded_filename(fn, category="SR"):
     p = "upload_log.txt"
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     entry = f"[{now}] ({category}) {fn}\n"
     with open(p, "a", encoding='utf-8') as f: f.write(entry)
 
-# --- 3. 안전한 숫자 변환 함수 (text_input 대응) ---
 def safe_float(val):
     try:
-        return float(val.replace(',', ''))
+        return float(str(val).replace(',', ''))
     except:
         return 0.0
 
-# --- 4. 페이지 설정 및 디자인(CSS) ---
+# --- 2. 페이지 설정 및 디자인 ---
 st.set_page_config(page_title="Europe Docs tool", layout="wide")
 
 st.markdown("""
     <style>
-    /* 결과 박스 스타일 */
     .result-box-final {
         background-color: #f8f9fa;
         padding: 20px;
@@ -45,6 +42,7 @@ st.markdown("""
         text-align: center;
         border: 2px solid #e9ecef;
         margin-top: 10px;
+        box-shadow: 2px 2px 5px rgba(0,0,0,0.05);
     }
     .result-title-final {
         font-size: 14px;
@@ -60,10 +58,6 @@ st.markdown("""
     .sc-value {
         color: #d9534f;
     }
-    /* 입력칸 간격 조절 */
-    .stTextInput {
-        margin-bottom: -10px;
-    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -71,7 +65,7 @@ st.title("🚢 Europe Docs tool")
 
 tab1, tab2, tab3 = st.tabs(["SR 정정", "업로드 기록", "CBM & 서차지 계산"])
 
-# --- TAB 1 & 2: 기존 로직 유지 ---
+# --- TAB 1 & 2: 카고3 로직 유지 ---
 with tab1:
     col_up1, col_up2 = st.columns(2)
     with col_up1:
@@ -146,58 +140,70 @@ with tab2:
     if os.path.exists("upload_log.txt"):
         with open("upload_log.txt", "r", encoding='utf-8') as f: st.text_area("Log", f.read(), height=500)
 
-# --- TAB 3: CBM & 서차지 계산 (카고4 최종 레이아웃) ---
+# --- TAB 3: CBM & 서차지 계산 (카고4 실험 - 단가 안내 최적화) ---
 with tab3:
-    # 화면을 왼쪽(CBM)과 오른쪽(서차지)으로 나눔
+    if 'boxes' not in st.session_state:
+        st.session_state.boxes = [{'h': '0', 'w': '0', 'l': '0', 'q': '1'}]
+
     left_calc, right_calc = st.columns(2, gap="large")
 
     with left_calc:
         st.subheader("📏 CBM 계산기")
-        st.caption("$CBM = H(m) \\times W(m) \\times L(m)$")
-        
-        # 입력 칸들을 더 좁게 배치
-        c1, c2, c3 = st.columns(3)
-        with c1: h_raw = st.text_input("높이(H) cm", value="0", key="f_h")
-        with c2: w_raw = st.text_input("가로(W) cm", value="0", key="f_w")
-        with c3: l_raw = st.text_input("세로(L) cm", value="0", key="f_l")
-        
-        c4, c5 = st.columns(2)
-        with c4: q_raw = st.text_input("수량(Qty)", value="1", key="f_q")
-        with c5: w_kg_raw = st.text_input("총 중량(kg)", value="0", key="f_weight")
+        b_col1, b_col2 = st.columns(2)
+        with b_col1:
+            if st.button("➕ 박스 규격 추가"):
+                st.session_state.boxes.append({'h': '0', 'w': '0', 'l': '0', 'q': '1'})
+        with b_col2:
+            if st.button("➖ 마지막 박스 삭제") and len(st.session_state.boxes) > 1:
+                st.session_state.boxes.pop()
 
-        # 계산
-        h_m, w_m, l_m = safe_float(h_raw)/100, safe_float(w_raw)/100, safe_float(l_raw)/100
-        qty_val = safe_float(q_raw)
-        total_cbm = h_m * w_m * l_m * qty_val
+        total_sum_cbm = 0.0
+        for i, box in enumerate(st.session_state.boxes):
+            st.markdown(f"**Box #{i+1}**")
+            r1, r2, r3, r4 = st.columns(4)
+            with r1: h = st.text_input(f"높이(cm)", value=box['h'], key=f"h_{i}")
+            with r2: w = st.text_input(f"가로(cm)", value=box['w'], key=f"w_{i}")
+            with r3: l = st.text_input(f"세로(cm)", value=box['l'], key=f"l_{i}")
+            with r4: q = st.text_input(f"수량", value=box['q'], key=f"q_{i}")
+            
+            st.session_state.boxes[i] = {'h': h, 'w': w, 'l': l, 'q': q}
+            row_cbm = (safe_float(h)/100) * (safe_float(w)/100) * (safe_float(l)/100) * safe_float(q)
+            total_sum_cbm += row_cbm
 
-        # 결과 박스
         st.markdown(f'''
             <div class="result-box-final">
-                <div class="result-title-final">총 CBM</div>
-                <div class="result-value-final">{format_number(total_cbm)}</div>
+                <div class="result-title-final">전체 합계 부피 (Total CBM)</div>
+                <div class="result-value-final">{format_number(total_sum_cbm)}</div>
             </div>
         ''', unsafe_allow_html=True)
 
     with right_calc:
-        st.subheader("💰 2단금지 서차지 계산")
-        is_active = st.checkbox("서차지 계산 활성화", key="f_active")
+        st.subheader("💰 서차지 계산")
+        # 요청하신 문구로 수정 완료
+        is_active = st.checkbox("서차지 계산 활성화 (1PLT 기준)", key="f_active_v4_plt")
         
         if is_active:
-            st.caption("$(2.5 - \\text{높이}) \\times \\text{가로} \\times \\text{세로} \\times \\text{운임} \\times \\text{수량}$")
-            ocean_rate_raw = st.text_input("운임($)", value="0", key="f_rate")
+            st.caption("$(2.5 - \\text{높이}) \\times \\text{가로} \\times \\text{세로} \\times \\text{운임}$ (1개당 단가)")
+            # 첫 번째 박스 규격 기준
+            ref_box = st.session_state.boxes[0]
+            ref_h = safe_float(ref_box['h']) / 100
+            ref_w = safe_float(ref_box['w']) / 100
+            ref_l = safe_float(ref_box['l']) / 100
             
-            # 계산 로직
-            stack_sc_usd = (2.5 - h_m) * w_m * l_m * qty_val * safe_float(ocean_rate_raw) if h_m > 0 else 0
+            ocean_rate_raw = st.text_input("운임($)", value="0", key="f_rate_v4_plt")
+            
+            # 1개당 단가 계산 (수량 제외)
+            stack_sc_usd = (2.5 - ref_h) * ref_w * ref_l * safe_float(ocean_rate_raw) if ref_h > 0 else 0
 
-            # 결과 박스 (빨간색 강조)
             st.markdown(f'''
                 <div class="result-box-final">
-                    <div class="result-title-final">서차지 금액 (USD)</div>
+                    <div class="result-title-final">2단적재 금지 서차지 (USD / 1PLT 단가)</div>
                     <div class="result-value-final sc-value">$ {stack_sc_usd:,.2f}</div>
                 </div>
             ''', unsafe_allow_html=True)
+            st.info(f"💡 Box #1 규격(H:{ref_box['h']}cm)을 기준으로 산출된 개당 서차지입니다.")
         else:
-            st.info("계산이 필요하면 위 체크박스를 선택하세요.")
+            st.info("단가 안내가 필요하면 위 체크박스를 선택하세요.")
 
     st.divider()
     st.warning("""
