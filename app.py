@@ -25,7 +25,7 @@ def log_uploaded_filename(fn, category="SR"):
     entry = f"[{now}] ({category}) {fn}\n"
     with open(p, "a", encoding='utf-8') as f: f.write(entry)
 
-# --- 3. 안전한 숫자 변환 함수 (화살표 제거용 text_input 대응) ---
+# --- 3. 안전한 숫자 변환 함수 (text_input 대응) ---
 def safe_float(val):
     try:
         return float(val.replace(',', ''))
@@ -37,25 +37,33 @@ st.set_page_config(page_title="Europe Docs tool", layout="wide")
 
 st.markdown("""
     <style>
-    .result-box {
+    /* 결과 박스 스타일 (세로형 강조) */
+    .result-box-v {
         background-color: #f8f9fa;
-        padding: 25px;
+        padding: 20px;
         border-radius: 12px;
         text-align: center;
         border: 2px solid #e9ecef;
-        box-shadow: 2px 2px 5px rgba(0,0,0,0.05);
-        margin-bottom: 10px;
+        margin-top: 10px;
+        margin-bottom: 20px;
     }
-    .result-title {
-        font-size: 16px;
+    .result-title-v {
+        font-size: 15px;
         color: #6c757d;
         font-weight: bold;
-        margin-bottom: 10px;
+        margin-bottom: 5px;
     }
-    .result-value {
-        font-size: 36px;
+    .result-value-v {
+        font-size: 40px;
         font-weight: 800;
         color: #007bff;
+    }
+    .surcharge-box {
+        background-color: #fff4f4;
+        border-color: #ffcccc;
+    }
+    .surcharge-value {
+        color: #d9534f;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -64,7 +72,7 @@ st.title("🚢 Europe Docs tool")
 
 tab1, tab2, tab3 = st.tabs(["SR 정정", "업로드 기록", "CBM & 서차지 계산"])
 
-# --- TAB 1 & 2: 카고3 로직 유지 ---
+# --- TAB 1 & 2: 기존 기능 유지 ---
 with tab1:
     col_up1, col_up2 = st.columns(2)
     with col_up1:
@@ -139,49 +147,63 @@ with tab2:
     if os.path.exists("upload_log.txt"):
         with open("upload_log.txt", "r", encoding='utf-8') as f: st.text_area("Log", f.read(), height=500)
 
-# --- TAB 3: CBM & 서차지 계산 (카고4 실험 - 용어 정리 버전) ---
+# --- TAB 3: CBM & 서차지 계산 (카고4 세로형 최종 보정) ---
 with tab3:
+    # 1. CBM 계산 섹션
     st.subheader("📏 CBM 계산기")
     st.caption("$CBM = \\text{가로(m)} \\times \\text{세로(m)} \\times \\text{높이(m)}$")
     
-    # 텍스트 입력으로 화살표 제거
-    c1, c2, c3, c4, c5 = st.columns(5)
-    with c1: h_raw = st.text_input("높이(H) cm", value="0", key="c4_h")
-    with c2: w_raw = st.text_input("가로(W) cm", value="0", key="c4_w")
-    with c3: l_raw = st.text_input("세로(L) cm", value="0", key="c4_l")
-    with c4: q_raw = st.text_input("수량(Qty)", value="1", key="c4_q")
-    with c5: w_kg_raw = st.text_input("총 중량(kg)", value="0", key="c4_weight")
+    # 세로형 입력을 위해 2줄로 배치
+    c_row1_1, c_row1_2, c_row1_3 = st.columns(3)
+    with c_row1_1: h_raw = st.text_input("높이(H) cm", value="0", key="v_h")
+    with c_row1_2: w_raw = st.text_input("가로(W) cm", value="0", key="v_w")
+    with c_row1_3: l_raw = st.text_input("세로(L) cm", value="0", key="v_l")
+    
+    c_row2_1, c_row2_2 = st.columns(2)
+    with c_row2_1: q_raw = st.text_input("수량(Qty)", value="1", key="v_q")
+    with c_row2_2: w_kg_raw = st.text_input("총 중량(kg)", value="0", key="v_weight")
 
-    # 숫자 계산
+    # 수치 계산
     h_m, w_m, l_m = safe_float(h_raw)/100, safe_float(w_raw)/100, safe_float(l_raw)/100
     qty_val = safe_float(q_raw)
     total_cbm = h_m * w_m * l_m * qty_val
-    r_ton = max(total_cbm, safe_float(w_kg_raw) / 1000)
 
-    res_c1, res_c2 = st.columns(2)
-    with res_c1:
-        st.markdown(f'<div class="result-box"><div class="result-title">총 CBM</div><div class="result-value">{format_number(total_cbm)}</div></div>', unsafe_allow_html=True)
-    with res_c2:
-        st.markdown(f'<div class="result-box"><div class="result-title">적용 R/TON</div><div class="result-value">{format_number(r_ton)}</div></div>', unsafe_allow_html=True)
+    # CBM 결과 (큼직하게 단독 배치)
+    st.markdown(f'''
+        <div class="result-box-v">
+            <div class="result-title-v">총 CBM</div>
+            <div class="result-value-v">{format_number(total_cbm)}</div>
+        </div>
+    ''', unsafe_allow_html=True)
 
     st.divider()
     
-    st.subheader("💰 2단금지 서차지 계산")
-    st.caption("$\\# \\text{계산식: } (2.5 - \\text{높이}) \\times \\text{가로} \\times \\text{세로} \\times \\text{운임}$")
+    # 2. 2단금지 서차지 섹션 (체크박스 제어)
+    st.subheader("💰 서차지 계산")
+    is_stack_forbidden = st.checkbox("2단적재 금지(Non-Stackable) 서차지 계산하기")
     
-    sc_input_col, sc_res_col = st.columns([1, 2])
-    with sc_input_col:
-        # '기본 운임 단가' 대신 깔끔하게 '운임'으로 수정
-        ocean_rate_raw = st.text_input("운임($)", value="0", key="c4_rate")
-    
-    # 공식: (2.5 - 높이m) * 가로m * 세로m * 수량 * 운임
-    # 높이가 있을 때만 계산 (0이면 0 출력)
-    stack_sc_usd = (2.5 - h_m) * w_m * l_m * qty_val * safe_float(ocean_rate_raw) if h_m > 0 else 0
-
-    with sc_res_col:
-        st.markdown(f'<div class="result-box"><div class="result-title">서차지 금액 (USD)</div><div class="result-value">$ {stack_sc_usd:,.2f}</div></div>', unsafe_allow_html=True)
+    if is_stack_forbidden:
+        st.caption("$\\# \\text{계산식: } (2.5 - \\text{높이}) \\times \\text{가로} \\times \\text{세로} \\times \\text{운임} \\times \\text{수량}$")
         
+        # 운임 입력
+        ocean_rate_raw = st.text_input("운임($)", value="0", key="v_rate")
+        
+        # 계산 로직
+        stack_sc_usd = (2.5 - h_m) * w_m * l_m * qty_val * safe_float(ocean_rate_raw) if h_m > 0 else 0
+
+        # 서차지 결과 (붉은 계열로 강조)
+        st.markdown(f'''
+            <div class="result-box-v surcharge-box">
+                <div class="result-title-v">2단금지 서차지 금액 (USD)</div>
+                <div class="result-value-v surcharge-value">$ {stack_sc_usd:,.2f}</div>
+            </div>
+        ''', unsafe_allow_html=True)
+    else:
+        st.info("2단금지 서차지 계산이 필요하면 위 체크박스를 선택해주세요.")
+
     st.divider()
+    
+    # 3. 업무 참고 메모 (기존 스타일 유지)
     st.warning("""
     **💡 업무 참고 메모**
     * 서차지 높은 거 같으면 깎아줘도 됨. 높이 1.8m 부턴 상단에 박스만 적재 가능해서 웨이브 해주는 편. (너무 마이너스만 아니면 됨)
