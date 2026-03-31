@@ -111,7 +111,7 @@ with tab1:
             lines.extend(["", "", "<MARK>", ""]) 
             for _, r in marks.iterrows():
                 lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
-                lines.append("") # 컨테이너 정보와 하우스 번호 사이 한 줄 띄움 (요청사항 반영)
+                lines.append("") 
                 for hbl in sorted(r['House B/L No']):
                     lines.append(hbl)
                 lines.append("") 
@@ -122,7 +122,8 @@ with tab1:
                 cur = (r['컨테이너 번호'], r['Seal#1'])
                 if cur != prev:
                     if prev[0] is not None: lines.extend(["", ""]) 
-                    if not single: lines.extend([f"{cur[0]} / {cur[1]}", ""])
+                    # 컨테이너 정보(번호 / 실)를 1대일 때도 항상 출력하도록 수정
+                    lines.extend([f"{cur[0]} / {cur[1]}", ""])
                     prev = cur
                 
                 h_no_raw = str(r['House B/L No']).strip()
