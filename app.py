@@ -29,10 +29,10 @@ def log_uploaded_filename(fn, category="SR"):
 st.set_page_config(page_title="Europe Docs tool", layout="wide")
 st.title("🚢 Europe Docs tool")
 
-# 탭 구성
-tab1, tab2 = st.tabs(["SR 정정", "업로드 기록"])
+# 탭 구성 (CBM & 서차지 계산 탭 추가)
+tab1, tab2, tab3 = st.tabs(["SR 정정", "업로드 기록", "CBM & 서차지 계산"])
 
-# --- TAB 1: SR 정정 ---
+# --- TAB 1: SR 정정 (카고3 기능 유지) ---
 with tab1:
     col_up1, col_up2 = st.columns(2)
     
@@ -42,7 +42,6 @@ with tab1:
         mark_spacing = st.checkbox("MARK 란 간격 띄우기", value=False)
 
     with col_up2:
-        # 요청하신 상세 문구로 수정 완료
         item_file = st.file_uploader("2. 하우스리스트 -> S/R NO 검색 -> 엑셀내려받기 파일 입력(품목명, HS CODE 입력 가능)_선택사항", type=["xlsx"], key="item_sub")
 
     st.divider()
@@ -59,7 +58,6 @@ with tab1:
             
             if item_file:
                 log_uploaded_filename(item_file.name, "ITEM")
-                # 2행(header=1)부터 데이터 시작
                 item_df = pd.read_excel(item_file, header=1)
                 item_df.columns = [str(c).strip() for c in item_df.columns]
                 
@@ -73,7 +71,6 @@ with tab1:
                         if h_no and h_no != "nan":
                             item_dict[h_no] = {"desc": desc_full.strip(), "hs": hs_raw}
                             
-                            # 내용 중간 빈 줄 감지
                             has_inner_empty = False
                             if "\n\n" in desc_stripped:
                                 has_inner_empty = True
@@ -102,7 +99,6 @@ with tab1:
             lines = []
             single = (len(total) == 1)
             
-            # --- 상단 TOTAL 영역 ---
             if not single:
                 g_p = int(total['포장갯수'].sum())
                 total_line = f"TOTAL: {g_p} PKGS / {format_number(total['Weight'].sum())} KGS / {format_number(total['Measure'].sum())} CBM"
@@ -113,7 +109,6 @@ with tab1:
                 lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
                 lines.append(f"TOTAL: {int(r['포장갯수'])} PKGS / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
             
-            # --- MARK 영역 ---
             lines.extend(["", "", "<MARK>", ""]) 
             for _, r in marks.iterrows():
                 lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
@@ -125,7 +120,6 @@ with tab1:
                 if not (single and mark_spacing):
                     lines.append("") 
             
-            # --- DESCRIPTION 영역 ---
             lines.extend(["", "<DESCRIPTION>", ""]) 
             prev = (None, None)
             for _, r in desc_df.iterrows():
@@ -162,8 +156,71 @@ with tab1:
         except Exception as e:
             st.error(f"오류 발생: {e}")
 
+# --- TAB 2: 업로드 기록 ---
 with tab2:
     st.subheader("파일 업로드 이력")
     if os.path.exists("upload_log.txt"):
         with open("upload_log.txt", "r", encoding='utf-8') as f:
             st.text_area("Log", f.read(), height=500)
+
+# --- TAB 3: CBM & 서차지 계산 (카고4 실험 탭) ---
+with tab3:
+    st.subheader("📏 수기 CBM 계산기")
+    # 수식 설명 (연하게)
+    st.caption("$CBM = \\text{가로(m)} \\times \\text{세로(m)} \\times \\text{높이(m)}$")
+    
+    calc_col1, calc_col2 = st.columns([2, 1])
+    
+    with calc_col1:
+        c1, c2, c3, c4, c5 = st.columns(5)
+        with c1: h_cm = st.number_input("높이(H) cm", min_value=0.0, step=1.0, key="calc_h")
+        with c2: w_cm = st.number_input("가로(W) cm", min_value=0.0, step=1.0, key="calc_w")
+        with c3: l_cm = st.number_input("세로(L) cm", min_value=0.0, step=1.0, key="calc_l")
+        with c4: qty = st.number_input("수량(Qty)", min_value=1, step=1, key="calc_q")
+        with c5: weight_kg = st.number_input("총 중량(kg)", min_value=0.0, step=1.0, key="calc_weight")
+
+        # 미터 변환
+        h_m, w_m, l_m = h_cm/100, w_cm/100, l_cm/100
+        single_cbm = h_m * w_m * l_m
+        total_cbm = single_cbm * qty
+        r_ton = max(total_cbm, weight_kg / 1000)
+
+    with calc_col2:
+        st.info(f"**결과**\n\n총 CBM: `{format_number(total_cbm)}`  \n적용 R/TON: `{format_number(r_ton)}`")
+
+    st.divider()
+    
+    st.subheader("💰 서차지(Surcharge) 가계산")
+    sc_col1, sc_col2 = st.columns([2, 1])
+    
+    with sc_col1:
+        s1, s2, s3 = st.columns(3)
+        with s1: ocean_rate = st.number_input("기본 운임 단가($)", min_value=0.0, step=1.0, value=0.0)
+        with s2: other_sc = st.number_input("기타 서차지 합계($)", min_value=0.0, step=1.0, value=0.0)
+        with s3: exchange_rate = st.number_input("적용 환율(₩)", min_value=0.0, step=1.0, value=1350.0)
+        
+        # 2단적재 금지 서차지 계산 (2.5 - 높이) * 가로 * 세로 * 운임
+        # 높이가 0이면 계산 제외
+        stack_sc_vol = (2.5 - h_m) * w_m * l_m * qty if h_m > 0 else 0
+        stack_sc_usd = stack_sc_vol * ocean_rate
+        
+        total_usd = (r_ton * ocean_rate) + (r_ton * other_sc) + stack_sc_usd
+        total_krw = total_usd * exchange_rate
+        
+        st.write("---")
+        st.markdown(f"**[상세 내역]**")
+        st.write(f"- 기본 물류비: `${(r_ton * ocean_rate):,.2f}`")
+        st.write(f"- 기타 서차지: `${(r_ton * other_sc):,.2f}`")
+        # 서차지 공식 설명 (연하게)
+        st.write(f"- **2단적재 금지 서차지**: `${stack_sc_usd:,.2f}`")
+        st.caption(f"公式: $(2.5 - {h_m:,.2f}m) \\times {w_m:,.2f}m \\times {l_m:,.2f}m \\times \\text{{운임}} \\times {qty}\\text{{개}}$")
+
+    with sc_col2:
+        st.metric("최종 예상 비용 (USD)", f"$ {total_usd:,.2f}")
+        st.metric("최종 예상 비용 (KRW)", f"₩ {int(total_krw):,}")
+        
+    st.warning("""
+    **💡 업무 참고 메모**
+    * 서차지가 너무 높은 것 같으면 적당히 깎아줘도 됨. (너무 마이너스만 아니면 됨)
+    * 높이 1.8m부터는 상단에 가벼운 박스류만 적재가 가능해서 웨이브(Wave) 해주는 편.
+    """)
