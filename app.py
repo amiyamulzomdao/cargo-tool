@@ -39,11 +39,11 @@ with tab1:
     with col_up1:
         sr_file = st.file_uploader("1. SR 엑셀 파일 입력", type=["xlsx"], key="sr_main")
         force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환", value=False)
-        # 요청하신 이름으로 체크박스 수정
         mark_spacing = st.checkbox("MARK 란 간격 띄우기", value=False)
 
     with col_up2:
-        item_file = st.file_uploader("2. 하우스리스트->엑셀내려받기 파일 입력(품목명, HS CODE 입력 가능)_선택사항", type=["xlsx"], key="item_sub")
+        # 요청하신 상세 문구로 수정 완료
+        item_file = st.file_uploader("2. 하우스리스트 -> S/R NO 검색 -> 엑셀내려받기 파일 입력(품목명, HS CODE 입력 가능)_선택사항", type=["xlsx"], key="item_sub")
 
     st.divider()
 
@@ -120,7 +120,6 @@ with tab1:
                 lines.append("") 
                 for hbl in sorted(r['House B/L No']):
                     lines.append(hbl)
-                    # 1대일 때 '간격 띄우기' 체크하면 BL 사이 빈 줄 추가
                     if single and mark_spacing:
                         lines.append("")
                 if not (single and mark_spacing):
@@ -133,7 +132,6 @@ with tab1:
                 cur = (r['컨테이너 번호'], r['Seal#1'])
                 if cur != prev:
                     if prev[0] is not None: lines.extend(["", ""]) 
-                    # 1대일 때도 컨테이너 정보 항상 표시
                     lines.extend([f"{cur[0]} / {cur[1]}", ""])
                     prev = cur
                 
