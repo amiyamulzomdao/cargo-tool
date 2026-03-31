@@ -25,48 +25,47 @@ def log_uploaded_filename(fn, category="SR"):
     entry = f"[{now}] ({category}) {fn}\n"
     with open(p, "a", encoding='utf-8') as f: f.write(entry)
 
-# --- 3. 페이지 기본 설정 ---
+# --- 3. 안전한 숫자 변환 함수 (text_input용) ---
+def safe_float(val):
+    try:
+        return float(val.replace(',', ''))
+    except:
+        return 0.0
+
+# --- 4. 페이지 설정 및 디자인(CSS) ---
 st.set_page_config(page_title="Europe Docs tool", layout="wide")
 
-# CSS로 숫자 칸의 -+ 버튼을 없애고 결과창 폰트를 키움
 st.markdown("""
     <style>
-    /* 숫자 입력 칸의 화살표 버튼 제거 */
-    input[type=number]::-webkit-inner-spin-button, 
-    input[type=number]::-webkit-outer-spin-button {
-        -webkit-appearance: none;
-        margin: 0;
-    }
-    input[type=number] {
-        -moz-appearance: textfield;
-    }
     /* 결과 박스 스타일 */
     .result-box {
-        background-color: #f0f2f6;
-        padding: 20px;
-        border-radius: 10px;
+        background-color: #f8f9fa;
+        padding: 25px;
+        border-radius: 12px;
         text-align: center;
-        border: 1px solid #d1d3d8;
+        border: 2px solid #e9ecef;
+        box-shadow: 2px 2px 5px rgba(0,0,0,0.05);
+        margin-bottom: 10px;
     }
     .result-title {
-        font-size: 18px;
-        color: #555;
-        margin-bottom: 5px;
+        font-size: 16px;
+        color: #6c757d;
+        font-weight: bold;
+        margin-bottom: 10px;
     }
     .result-value {
-        font-size: 32px;
-        font-weight: bold;
-        color: #1f77b4;
+        font-size: 36px;
+        font-weight: 800;
+        color: #007bff;
     }
     </style>
 """, unsafe_allow_html=True)
 
 st.title("🚢 Europe Docs tool")
 
-# 탭 구성
 tab1, tab2, tab3 = st.tabs(["SR 정정", "업로드 기록", "CBM & 서차지 계산"])
 
-# --- TAB 1 & 2 는 카고3과 동일 (코드 생략 방지를 위해 핵심 로직 유지) ---
+# --- TAB 1: SR 정정 (카고3 기능 유지) ---
 with tab1:
     col_up1, col_up2 = st.columns(2)
     with col_up1:
@@ -75,6 +74,7 @@ with tab1:
         mark_spacing = st.checkbox("MARK 란 간격 띄우기", value=False)
     with col_up2:
         item_file = st.file_uploader("2. 하우스리스트 -> S/R NO 검색 -> 엑셀내려받기 파일 입력(품목명, HS CODE 입력 가능)_선택사항", type=["xlsx"], key="item_sub")
+    
     st.divider()
     if sr_file:
         try:
@@ -137,28 +137,30 @@ with tab1:
                 st.text_area("결과창", result, height=800, label_visibility="collapsed")
         except Exception as e: st.error(f"오류 발생: {e}")
 
+# --- TAB 2: 업로드 기록 ---
 with tab2:
     if os.path.exists("upload_log.txt"):
         with open("upload_log.txt", "r", encoding='utf-8') as f: st.text_area("Log", f.read(), height=500)
 
-# --- TAB 3: CBM & 서차지 계산 (카고4 디자인 대수술) ---
+# --- TAB 3: CBM & 서차지 계산 (카고4 최종 실험) ---
 with tab3:
     st.subheader("📏 CBM 계산기")
     st.caption("$CBM = \\text{가로(m)} \\times \\text{세로(m)} \\times \\text{높이(m)}$")
     
-    # 입력 칸 (화살표 제거됨)
+    # text_input으로 변경하여 화살표 단추를 원천 차단
     c1, c2, c3, c4, c5 = st.columns(5)
-    with c1: h_cm = st.number_input("높이(H) cm", min_value=0.0, format="%.0f", key="c4_h")
-    with c2: w_cm = st.number_input("가로(W) cm", min_value=0.0, format="%.0f", key="c4_w")
-    with c3: l_cm = st.number_input("세로(L) cm", min_value=0.0, format="%.0f", key="c4_l")
-    with c4: qty = st.number_input("수량(Qty)", min_value=1.0, format="%.0f", key="c4_q")
-    with c5: weight_kg = st.number_input("총 중량(kg)", min_value=0.0, format="%.0f", key="c4_weight")
+    with c1: h_raw = st.text_input("높이(H) cm", value="0", key="c4_h")
+    with c2: w_raw = st.text_input("가로(W) cm", value="0", key="c4_w")
+    with c3: l_raw = st.text_input("세로(L) cm", value="0", key="c4_l")
+    with c4: q_raw = st.text_input("수량(Qty)", value="1", key="c4_q")
+    with c5: w_kg_raw = st.text_input("총 중량(kg)", value="0", key="c4_weight")
 
-    h_m, w_m, l_m = h_cm/100, w_cm/100, l_cm/100
-    total_cbm = h_m * w_m * l_m * qty
-    r_ton = max(total_cbm, weight_kg / 1000)
+    # 입력값 숫자 변환
+    h_m, w_m, l_m = safe_float(h_raw)/100, safe_float(w_raw)/100, safe_float(l_raw)/100
+    qty_val = safe_float(q_raw)
+    total_cbm = h_m * w_m * l_m * qty_val
+    r_ton = max(total_cbm, safe_float(w_kg_raw) / 1000)
 
-    # 결과창 (크고 시원하게)
     res_c1, res_c2 = st.columns(2)
     with res_c1:
         st.markdown(f'<div class="result-box"><div class="result-title">총 CBM</div><div class="result-value">{format_number(total_cbm)}</div></div>', unsafe_allow_html=True)
@@ -170,18 +172,17 @@ with tab3:
     st.subheader("💰 2단금지 서차지 계산")
     st.caption("$\\# \\text{계산식: } (2.5 - \\text{높이}) \\times \\text{가로} \\times \\text{세로} \\times \\text{운임}$")
     
-    sc1, sc2 = st.columns(2)
-    with sc1: ocean_rate = st.number_input("기본 운임 단가($)", min_value=0.0, format="%.0f")
-    with sc2: exchange_rate = st.number_input("적용 환율(₩)", min_value=0.0, value=1350.0, format="%.0f")
+    sc_col1, sc_col2 = st.columns([1, 2])
+    with sc_col1:
+        rate_raw = st.text_input("기본 운임 단가($)", value="0")
     
-    stack_sc_usd = (2.5 - h_m) * w_m * l_m * qty * ocean_rate if h_m > 0 else 0
-    stack_sc_krw = stack_sc_usd * exchange_rate
+    stack_sc_usd = (2.5 - h_m) * w_m * l_m * qty_val * safe_float(rate_raw) if h_m > 0 else 0
 
-    # 서차지 결과창
-    sc_res1, sc_res2 = st.columns(2)
-    with sc_res1:
-        st.markdown(f'<div class="result-box"><div class="result-title">서차지 (USD)</div><div class="result-value">$ {stack_sc_usd:,.2f}</div></div>', unsafe_allow_html=True)
-    with sc_res2:
-        st.markdown(f'<div class="result-box"><div class="result-title">서차지 (KRW)</div><div class="result-value">₩ {int(stack_sc_krw):,}</div></div>', unsafe_allow_html=True)
+    with sc_col2:
+        st.markdown(f'<div class="result-box"><div class="result-title">서차지 금액 (USD)</div><div class="result-value">$ {stack_sc_usd:,.2f}</div></div>', unsafe_allow_html=True)
         
-    st.warning("**💡 업무 참고 메모**\n\n* 서차지 높은 거 같으면 깎아줘도 됨. 높이 1.8m 부턴 상단에 박스만 적재 가능해서 웨이브 해주는 편. (너무 마이너스만 아니면 됨)")
+    st.divider()
+    st.warning("""
+    **💡 업무 참고 메모**
+    * 서차지 높은 거 같으면 깎아줘도 됨. 높이 1.8m 부턴 상단에 박스만 적재 가능해서 웨이브 해주는 편. (너무 마이너스만 아니면 됨)
+    """)
