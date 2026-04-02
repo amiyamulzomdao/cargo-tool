@@ -1,9 +1,9 @@
 import streamlit as st
 import pandas as pd
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
-# --- 1. 유틸리티 함수 (동일) ---
+# --- 1. 유틸리티 함수 ---
 def format_unit(unit, count, force_to_pkg=False):
     u_str = str(unit).upper() if pd.notna(unit) else "PKG"
     m = {'PK':'PKG', 'PL':'PLT', 'CT':'CTN'}
@@ -18,9 +18,11 @@ def format_number(v):
         return t.rstrip('0').rstrip('.') if '.' in t else t
     except: return str(v)
 
+# [수정] 한국 시간(KST) 강제 설정 로직 반영
 def log_uploaded_filename(fn, category="SR"):
     p = "upload_log.txt"
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    kst = timezone(timedelta(hours=9))
+    now = datetime.now(kst).strftime("%Y-%m-%d %H:%M:%S")
     entry = f"[{now}] ({category}) {fn}\n"
     with open(p, "a", encoding='utf-8') as f: f.write(entry)
 
@@ -62,6 +64,7 @@ with tab1:
             cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
             df = sr_df[cols].copy().dropna(subset=['House B/L No'])
             df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
+            df['단위'] = df['단위'].fillna('PKG')
             
             total = df.groupby(['컨테이너 번호', 'Seal#1']).agg(포장갯수=('포장갯수','sum'), Weight=('Weight','sum'), Measure=('Measure','sum')).reset_index()
             marks = df.groupby(['컨테이너 번호', 'Seal#1'])['House B/L No'].unique().reset_index()
@@ -70,7 +73,6 @@ with tab1:
             lines = []
             num_containers = len(total)
             
-            # --- 상단 TOTAL 영역 (카고3 규칙) ---
             if num_containers > 1:
                 g_p = int(total['포장갯수'].sum())
                 total_line = f"TOTAL: {g_p} PKGS / {format_number(total['Weight'].sum())} KGS / {format_number(total['Measure'].sum())} CBM"
@@ -80,24 +82,18 @@ with tab1:
                 lines.append(""); lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
                 lines.append(f"TOTAL: {int(r['포장갯수'])} PKGS / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
             
-            # --- MARK 영역 (이미지 피드백 반영 핵심 수정) ---
             lines.extend(["", "", "<MARK>", ""]) 
             for i, r in marks.iterrows():
-                # 이미지처럼 컨테이너 정보 위아래로 빈 줄을 확실히 추가
-                if i > 0: lines.append("") # 컨테이너 사이 간격
-                
+                if i > 0: lines.append("") 
                 lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
-                lines.append("") # 컨테이너 번호 바로 아래 빈 줄
-                
+                lines.append("") 
                 for hbl in sorted(r['House B/L No']):
                     lines.append(hbl)
                     if num_containers <= 4 and mark_spacing:
-                        lines.append("") # BL 사이 빈 줄
-                
+                        lines.append("") 
                 if not (num_containers <= 4 and mark_spacing):
                     lines.append("") 
             
-            # --- DESCRIPTION 영역 (카고3 규칙) ---
             lines.extend(["", "<DESCRIPTION>", ""]) 
             prev = (None, None)
             for _, r in desc_df.iterrows():
