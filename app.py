@@ -63,7 +63,6 @@ with tab1:
                 if "House B/L No" in item_df.columns and "품목" in item_df.columns:
                     for _, row in item_df.iterrows():
                         h_no = str(row["House B/L No"]).strip()
-                        # nan 방지 로직 강화
                         desc_val = str(row["품목"]).strip() if pd.notna(row["품목"]) else ""
                         hs_val = str(row.get("HS CODE", "")).strip() if pd.notna(row.get("HS CODE", "")) else ""
                         
@@ -101,7 +100,13 @@ with tab1:
             
             # --- MARK 영역 ---
             lines.extend(["", "", "<MARK>", ""]) 
+            # 요청하신 부분: 컨테이너 간 간격 보정을 위한 추적 변수
+            mark_prev = None
             for _, r in marks.iterrows():
+                # 다음 컨테이너로 넘어갈 때 빈 줄 추가
+                if mark_prev is not None:
+                    lines.append("")
+                
                 lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
                 lines.append("") 
                 for hbl in sorted(r['House B/L No']):
@@ -110,6 +115,7 @@ with tab1:
                         lines.append("")
                 if not (num_containers <= 4 and mark_spacing):
                     lines.append("") 
+                mark_prev = r['컨테이너 번호']
             
             # --- DESCRIPTION 영역 ---
             lines.extend(["", "<DESCRIPTION>", ""]) 
@@ -127,7 +133,6 @@ with tab1:
                 
                 if h_no_raw in item_dict:
                     info = item_dict[h_no_raw]
-                    # nan이거나 비어있지 않을 때만 줄 추가
                     if info["desc"] and info["desc"].lower() != "nan":
                         lines.append(info["desc"])
                     if info["hs"] and info["hs"].lower() != "nan":
