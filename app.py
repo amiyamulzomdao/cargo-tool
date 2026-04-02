@@ -29,7 +29,7 @@ def log_uploaded_filename(fn, category="SR"):
 st.set_page_config(page_title="Europe Docs tool", layout="wide")
 st.title("🚢 Europe Docs tool")
 
-# 탭 구성 (카고 3은 정정과 기록 두 가지만 포함)
+# 탭 구성
 tab1, tab2 = st.tabs(["SR 정정", "업로드 기록"])
 
 # --- TAB 1: SR 정정 ---
@@ -39,6 +39,7 @@ with tab1:
     with col_up1:
         sr_file = st.file_uploader("1. SR 엑셀 파일 입력", type=["xlsx"], key="sr_main")
         force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환", value=False)
+        # 명칭 유지: MARK 란 간격 띄우기
         mark_spacing = st.checkbox("MARK 란 간격 띄우기", value=False)
 
     with col_up2:
@@ -65,23 +66,10 @@ with tab1:
                     for _, row in item_df.iterrows():
                         h_no = str(row["House B/L No"]).strip()
                         desc_full = str(row["품목"]) if pd.notna(row["품목"]) else ""
-                        desc_stripped = desc_full.strip() 
                         hs_raw = str(row.get("HS CODE", "")).strip()
-                        
                         if h_no and h_no != "nan":
                             item_dict[h_no] = {"desc": desc_full.strip(), "hs": hs_raw}
-                            
-                            has_inner_empty = False
-                            if "\n\n" in desc_stripped:
-                                has_inner_empty = True
-                            else:
-                                lines = desc_stripped.split('\n')
-                                for i in range(1, len(lines) - 1):
-                                    if lines[i].strip() == "":
-                                        has_inner_empty = True
-                                        break
-                            if has_inner_empty:
-                                empty_line_bls.append(h_no)
+                            if "\n\n" in desc_full.strip(): empty_line_bls.append(h_no)
 
             cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
             df = sr_df[cols].copy()
@@ -97,10 +85,10 @@ with tab1:
             desc_df = df.sort_values(['컨테이너 번호', 'Seal#1', 'House B/L No'])
             
             lines = []
-            single = (len(total) == 1)
+            num_containers = len(total)
             
             # --- 상단 TOTAL 영역 ---
-            if not single:
+            if num_containers > 1:
                 g_p = int(total['포장갯수'].sum())
                 total_line = f"TOTAL: {g_p} PKGS / {format_number(total['Weight'].sum())} KGS / {format_number(total['Measure'].sum())} CBM"
                 lines.extend(["[GRAND TOTAL]", total_line, "-" * (len(total_line) + 10)]) 
@@ -117,9 +105,11 @@ with tab1:
                 lines.append("") 
                 for hbl in sorted(r['House B/L No']):
                     lines.append(hbl)
-                    if single and mark_spacing:
+                    # [수정] 컨테이너가 4대 이하일 때 체크박스가 켜져있으면 BL 사이 빈 줄 추가
+                    if num_containers <= 4 and mark_spacing:
                         lines.append("")
-                if not (single and mark_spacing):
+                # 간격 띄우기 옵션이 꺼져있거나 컨테이너가 5대 이상일 때만 기본 한 줄 띄움
+                if not (num_containers <= 4 and mark_spacing):
                     lines.append("") 
             
             # --- DESCRIPTION 영역 ---
@@ -129,30 +119,25 @@ with tab1:
                 cur = (r['컨테이너 번호'], r['Seal#1'])
                 if cur != prev:
                     if prev[0] is not None: lines.extend(["", ""]) 
-                    # 1대일 때도 컨테이너 정보 항상 표시
                     lines.extend([f"{cur[0]} / {cur[1]}", ""])
                     prev = cur
                 
                 h_no_raw = str(r['House B/L No']).strip()
-                u_val = format_unit(r['단위'], r['포장갯수'], force_to_pkg)
                 lines.append(h_no_raw)
-                lines.append(f"{int(r['포장갯수'])} {u_val} / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
+                lines.append(f"{int(r['포장갯수'])} {format_unit(r['단위'], r['포장갯수'], force_to_pkg)} / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
                 
                 if h_no_raw in item_dict:
                     info = item_dict[h_no_raw]
-                    if info["desc"] and info["desc"].lower() != "nan": lines.append(info["desc"])
-                    if info["hs"] and info["hs"].lower() != "nan": lines.append(info["hs"])
+                    if info["desc"]: lines.append(info["desc"])
+                    if info["hs"]: lines.append(info["hs"])
                 lines.append("")
             
             result = "\n".join(lines)
             
             with col_res:
                 st.subheader("정리 결과")
-                if gt_bls:
-                    st.error(f"⚠️ **GT 단위 확인 필요 B/L:** {', '.join(gt_bls)}")
-                if empty_line_bls:
-                    bl_list_str = ', '.join(list(set(empty_line_bls)))
-                    st.warning(f"📢 **다중 품목 의심 B/L:** {bl_list_str} -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
+                if gt_bls: st.error(f"⚠️ **GT 단위 확인 필요 B/L:** {', '.join(gt_bls)}")
+                if empty_line_bls: st.warning(f"📢 **다중 품목 의심 B/L:** {', '.join(list(set(empty_line_bls)))}")
                 
                 st.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt")
                 st.text_area("결과창", result, height=800, label_visibility="collapsed")
@@ -160,9 +145,7 @@ with tab1:
         except Exception as e:
             st.error(f"오류 발생: {e}")
 
-# --- TAB 2: 업로드 기록 ---
 with tab2:
-    st.subheader("파일 업로드 이력")
     if os.path.exists("upload_log.txt"):
         with open("upload_log.txt", "r", encoding='utf-8') as f:
             st.text_area("Log", f.read(), height=500)
