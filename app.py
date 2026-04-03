@@ -4,7 +4,7 @@ import os
 import re
 from datetime import datetime, timedelta, timezone
 
-# --- 1. 유틸리티 및 강력 세척 함수 ---
+# --- 1. 유틸리티 및 강력 세척 함수 (카고3 불변 로직) ---
 def format_unit(unit, count, force_to_pkg=False):
     u_str = str(unit).upper() if pd.notna(unit) else "PKG"
     m = {'PK':'PKG', 'PL':'PLT', 'CT':'CTN'}
@@ -30,13 +30,12 @@ def log_uploaded_filename(fn, category="SR"):
             f.write(entry)
         st.session_state[log_key] = True
 
-# [매칭 해결사] 숫자와 알파벳만 남기는 초강력 세척 함수
+# [필살기] 숫자와 알파벳만 남기고 모든 쓰레기 값을 지우는 함수
 def super_clean(v):
-    if pd.isna(v): return ""
-    # 알파벳과 숫자만 추출 (특수문자, 공백, 줄바꿈 완전 제거)
-    clean = re.sub(r'[^A-Z0-9]', '', str(v).upper())
-    # 소수점 .0이 붙은 경우 제거
-    if clean.endswith('0') and '.0' in str(v): clean = clean[:-1]
+    if pd.isna(v) or v == "": return ""
+    # 1. 문자열화 2. 소수점 .0 제거 3. 알파벳/숫자 제외 모든 특수문자/공백 제거 4. 대문자화
+    s = str(v).replace(".0", "")
+    clean = re.sub(r'[^A-Z0-9]', '', s.upper())
     return clean
 
 # --- 2. 페이지 설정 ---
@@ -52,7 +51,7 @@ with tab1:
         force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환", value=False)
         mark_spacing = st.checkbox("MARK 란 간격 띄우기", value=False)
     with col_up2:
-        item_file = st.file_uploader("2. 품목/HS CODE 정보 파일 입력", type=["xlsx"], key="item_sub")
+        item_file = st.file_uploader("2. 품목/HS CODE 정보 파일 입력(SDF/품목 모두 가능)", type=["xlsx"], key="item_sub")
 
     st.divider()
 
@@ -65,15 +64,15 @@ with tab1:
             item_dict = {}; empty_line_bls = [] 
             if item_file:
                 log_uploaded_filename(item_file.name, "ITEM")
-                # 헤더 없이 모든 데이터를 문자열로 읽음
+                # 헤더 무시하고 싹 다 읽어옴
                 item_raw = pd.read_excel(item_file, header=None).fillna("")
                 
                 bl_idx, desc_idx, hs_idx = None, None, None
-                # 제목 줄 찾기 (강력한 키워드 매칭)
+                # 제목 줄 찾기 (상단 20줄 뒤지기)
                 for r in range(min(20, len(item_raw))):
-                    row_vals = [str(x).upper().replace(" ", "") for x in item_raw.iloc[r]]
+                    row_vals = [super_clean(x) for x in item_raw.iloc[r]]
                     for idx, val in enumerate(row_vals):
-                        if any(k in val for k in ["HOUSEB/L", "HB/L", "BLNO", "B/LNO"]): bl_idx = idx
+                        if any(k in val for k in ["HOUSEBL", "HBL", "BLNO", "BLNO"]): bl_idx = idx
                         if any(k in val for k in ["품목", "DESCRIPTION", "DESC"]): desc_idx = idx
                         if "HS" in val: hs_idx = idx
                     if bl_idx is not None and desc_idx is not None:
@@ -83,24 +82,24 @@ with tab1:
 
                 if bl_idx is not None and desc_idx is not None:
                     for r in range(start_row, len(item_raw)):
-                        # 번호를 초강력 세척하여 키값으로 저장
-                        raw_h_no = item_raw.iloc[r, bl_idx]
-                        h_no_key = super_clean(raw_h_no)
+                        raw_hbl = item_raw.iloc[r, bl_idx]
+                        h_no_key = super_clean(raw_hbl)
                         
                         desc_v = str(item_raw.iloc[r, desc_idx]).strip()
                         hs_v = str(item_raw.iloc[r, hs_idx]).strip() if hs_idx is not None else ""
                         
-                        if h_no_key and h_no_key not in ["NAN", "NONE", ""]:
+                        if h_no_key and h_no_key not in ["NAN", "NONE"]:
                             item_dict[h_no_key] = {
                                 "desc": desc_v if desc_v.lower() != "nan" else "",
                                 "hs": hs_v if hs_v.lower() != "nan" else ""
                             }
-                            if "\n\n" in desc_v: empty_line_bls.append(raw_h_no)
+                            if "\n\n" in desc_v: empty_line_bls.append(str(raw_hbl))
 
-            # --- SR 데이터 처리 로직 ---
+            # --- 데이터 처리 로직 (카고3 불변 규칙) ---
             target_cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
             df = sr_df[target_cols].copy().dropna(subset=['House B/L No'])
             df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
+            df['단위'] = df['단위'].fillna('PKG')
             
             total = df.groupby(['컨테이너 번호', 'Seal#1']).agg(포장갯수=('포장갯수','sum'), Weight=('Weight','sum'), Measure=('Measure','sum')).reset_index()
             marks = df.groupby(['컨테이너 번호', 'Seal#1'])['House B/L No'].unique().reset_index()
@@ -141,16 +140,9 @@ with tab1:
                 lines.append(h_no_raw)
                 lines.append(f"{int(r['포장갯수'])} {format_unit(r['단위'], r['포장갯수'], force_to_pkg)} / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
                 
-                # [매칭 핵심] SR 번호도 초강력 세척하여 딕셔너리에서 검색
-                cleaned_h_no = super_clean(h_no_raw)
-                info = item_dict.get(cleaned_h_no)
-                
-                # 만약 정확히 안 맞으면 포함 관계로 한 번 더 찾기 (유연한 매칭)
-                if not info:
-                    for k, v in item_dict.items():
-                        if k in cleaned_h_no or cleaned_h_no in k:
-                            info = v
-                            break
+                # [무적 매칭] SR 번호도 초강력 세척하여 딕셔너리에서 검색
+                cleaned_sr_no = super_clean(h_no_raw)
+                info = item_dict.get(cleaned_sr_no)
                 
                 if info:
                     if info["desc"]: lines.append(info["desc"])
