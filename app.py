@@ -18,6 +18,7 @@ def format_number(v):
         return t.rstrip('0').rstrip('.') if '.' in t else t
     except: return str(v)
 
+# [불변] 중복 로그 방지 + 한국 시간(KST) 고정
 def log_uploaded_filename(fn, category="SR"):
     log_key = f"logged_{fn}_{category}"
     if log_key not in st.session_state:
@@ -42,7 +43,6 @@ with tab1:
         force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환", value=False)
         mark_spacing = st.checkbox("MARK 란 간격 띄우기", value=False)
     with col_up2:
-        # 이번에 주신 품목.xlsx 전용 업로더
         item_file = st.file_uploader("2. 품목/HS CODE 정보 파일 입력", type=["xlsx"], key="item_sub")
 
     st.divider()
@@ -56,15 +56,14 @@ with tab1:
             item_dict = {}; empty_line_bls = [] 
             if item_file:
                 log_uploaded_filename(item_file.name, "ITEM")
-                # [수정] 헤더를 첫 번째 줄(0)부터 바로 읽도록 고정
+                # 품목 파일 인식 개선 (헤더 0번 고정)
                 item_df = pd.read_excel(item_file)
                 
-                # 주신 파일의 컬럼명에 맞춰서 매칭 (H B/L No, Description, HS Code)
                 for _, row in item_df.iterrows():
-                    # 컬럼명이 파일과 정확히 일치해야 함
-                    h_no = str(row.get("H B/L No", "")).strip()
-                    desc_val = str(row.get("Description", "")).strip() if pd.notna(row.get("Description")) else ""
-                    hs_val = str(row.get("HS Code", "")).strip() if pd.notna(row.get("HS Code")) else ""
+                    # 사용자 제공 파일 컬럼명 매칭 (H B/L No, Description, HS Code)
+                    h_no = str(row.get("H B/L No", row.get("House B/L No", ""))).strip()
+                    desc_val = str(row.get("Description", row.get("품목", ""))).strip() if pd.notna(row.get("Description", row.get("품목"))) else ""
+                    hs_val = str(row.get("HS Code", row.get("HS CODE", ""))).strip() if pd.notna(row.get("HS Code", row.get("HS CODE"))) else ""
                     
                     if h_no and h_no.lower() != "nan":
                         item_dict[h_no] = {"desc": desc_val, "hs": hs_val}
@@ -83,6 +82,7 @@ with tab1:
             lines = []
             num_containers = len(total)
             
+            # --- 상단 TOTAL 영역 ---
             if num_containers > 1:
                 g_p = int(total['포장갯수'].sum())
                 total_line = f"TOTAL: {g_p} PKGS / {format_number(total['Weight'].sum())} KGS / {format_number(total['Measure'].sum())} CBM"
@@ -92,6 +92,7 @@ with tab1:
                 lines.append(""); lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
                 lines.append(f"TOTAL: {int(r['포장갯수'])} PKGS / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
             
+            # --- MARK 영역 (이미지 간격 반영) ---
             lines.extend(["", "", "<MARK>", ""]) 
             for i, r in marks.iterrows():
                 if i > 0: lines.append("") 
@@ -102,6 +103,7 @@ with tab1:
                     if num_containers <= 4 and mark_spacing: lines.append("")
                 if not (num_containers <= 4 and mark_spacing): lines.append("") 
             
+            # --- DESCRIPTION 영역 (컨/씰 상시 표시) ---
             lines.extend(["", "<DESCRIPTION>", ""]) 
             prev = (None, None)
             for _, r in desc_df.iterrows():
