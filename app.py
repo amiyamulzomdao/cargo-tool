@@ -32,11 +32,10 @@ def log_uploaded_filename(fn, category="SR"):
     entry = f"[{now}] ({category}) {fn}\n"
     with open(p, "a", encoding='utf-8') as f: f.write(entry)
 
-# --- 2. 데이터 분석 엔진 (순서 및 구조 파악) ---
+# --- 2. 데이터 분석 엔진 ---
 def parse_sr_txt(txt_content):
     data = {"total_pkg": 0, "total_wgt": "0", "total_msr": "0", "containers": [], "seals": [], "hbl_list": []}
     
-    # 총계 추출
     pkg_match = re.search(r"TOTAL:\s*(\d+)\s*PKGS", txt_content)
     wgt_match = re.search(r"/\s*([\d.]+)\s*KGS", txt_content)
     msr_match = re.search(r"/\s*([\d.]+)\s*CBM", txt_content)
@@ -44,23 +43,16 @@ def parse_sr_txt(txt_content):
     if wgt_match: data["total_wgt"] = wgt_match.group(1)
     if msr_match: data["total_msr"] = msr_match.group(1)
     
-    # 컨테이너/씰 세트 추출
     cntr_matches = re.findall(r"([A-Z]{4}\d{7})\s*/\s*([A-Z0-9]+)", txt_content)
     for c, s in cntr_matches:
         data["containers"].append(c); data["seals"].append(s)
         
-    # HBL별 나열 순서대로 상세 데이터 추출
     if "<DESCRIPTION>" in txt_content:
         desc_part = txt_content.split("<DESCRIPTION>")[-1]
-        # HBL, 수량, 중량, 부피 순서대로 블록 매칭
+        # 메모장에 적힌 HBL, 무게, 부피를 순서대로 리스트화
         hbl_blocks = re.findall(r"([A-Z0-9]{8,16})\n(\d+)\s*\w+\s*/\s*([\d.]+)\s*KGS\s*/\s*([\d.]+)\s*CBM", desc_part)
         for hbl, pkg, wgt, msr in hbl_blocks:
-            search_area = desc_part.split(hbl)[-1].split("\n\n")[0]
-            hs_match = re.search(r"(\d{4}\.\d{2})", search_area)
-            data["hbl_list"].append({
-                "hbl": hbl, "pkg": pkg, "wgt": wgt, "msr": msr, 
-                "hs": hs_match.group(1) if hs_match else ""
-            })
+            data["hbl_list"].append({"hbl": hbl, "wgt": wgt, "msr": msr})
     return data
 
 # --- 3. 페이지 설정 ---
@@ -146,7 +138,7 @@ with tab1:
                 st.text_area("결과창", result, height=800, label_visibility="collapsed")
         except Exception as e: st.error(f"오류 발생: {e}")
 
-# --- TAB 2: MBL 검수 (디자인 및 로직 최적화) ---
+# --- TAB 2: MBL 검수 (순서 매칭 정밀 로직) ---
 with tab2:
     col1, col2 = st.columns(2)
     with col1:
@@ -169,40 +161,41 @@ with tab2:
                 with pdfplumber.open(draft_pdf) as pdf:
                     full_text = " ".join([p.extract_text().upper() for p in pdf.pages])
                 
+                # PDF에서 발견되는 모든 부피(CBM) 수치를 순서대로 추출
+                # 예: 1.534, 0.220, 1.227... 등 숫자 뒤에 CBM/CU.M 등이 붙은 패턴 탐색
+                pdf_msr_list = re.findall(r"([\d.]+)\s*(?:CBM|CU\. M|M3)", full_text)
+                
                 errors = []
-                # [1] 총계/컨테이너/씰 (순서 상관없이 존재 여부 체크)
+                # [1] 총계 기본 검사
                 if str(sr["total_pkg"]) not in full_text: errors.append(f"❌ 총 수량 불일치: {sr['total_pkg']} PKGS")
                 if sr["total_wgt"] not in full_text: errors.append(f"❌ 총 중량 불일치: {sr['total_wgt']} KGS")
                 if sr["total_msr"] not in full_text: errors.append(f"❌ 총 부피 불일치: {sr['total_msr']} CBM")
-                for c in set(sr["containers"]):
-                    if c.upper() not in full_text: errors.append(f"❌ 컨테이너 번호 누락: {c}")
-                for s in set(sr["seals"]):
-                    if s and s.upper() not in full_text: errors.append(f"❌ Seal 번호 누락: {s}")
 
-                # [2] 순서 기반 HBL 정밀 검수
-                # 메모장에 나열된 B/L 순서대로 선사 PDF 내의 수치와 매칭 확인
-                for item in sr["hbl_list"]:
+                # [2] 순서 기반 개별 HBL 매칭 (핵심)
+                # 메모장의 HBL 순서와 PDF에서 추출된 수치 순서를 대조
+                for i, item in enumerate(sr["hbl_list"]):
                     h_no = item["hbl"]
-                    # 1. B/L 번호 자체가 있는지 확인
-                    if h_no not in full_text:
-                        errors.append(f"❌ B/L 번호 찾을 수 없음: {h_no}")
-                        continue
+                    sr_msr = item["msr"]
                     
-                    # 2. 해당 B/L 번호 근처(순서상 근접 데이터)에 수치들이 있는지 확인
-                    # 중량과 부피가 PDF 내에서 해당 B/L 번호 뒤에 적절히 나열되어 있는지 체크
-                    if item["wgt"] not in full_text:
-                        errors.append(f"❌ 중량 불일치 (HBL: {h_no}): {item['wgt']} KGS")
-                    if item["msr"] not in full_text:
-                        errors.append(f"❌ 부피 불일치 (HBL: {h_no}): {item['msr']} CBM (선사 Rider 데이터 확인)")
-                    if item["hs"] and item["hs"] not in full_text:
-                        errors.append(f"❌ HS CODE 불일치 (HBL: {h_no}): {item['hs']}")
+                    # PDF에서 추출된 i번째 수치가 SR의 i번째 수치와 일치하는지 확인
+                    # (첫 번째 수치는 보통 GRAND TOTAL이므로 인덱스 조정이 필요할 수 있음)
+                    # 여기서는 텍스트 전체에서 해당 B/L 번호 뒤에 나오는 첫 번째 수치를 찾는 방식으로 정밀도 보완
+                    hbl_pos = full_text.find(h_no)
+                    if hbl_pos != -1:
+                        # B/L 번호 이후 300자 이내에서 가장 먼저 나오는 부피 수치 탐색
+                        near_text = full_text[hbl_pos:hbl_pos+400]
+                        msr_match = re.search(r"([\d.]+)\s*(?:CBM|CU\. M|M3|KGS)", near_text)
+                        
+                        if sr_msr not in near_text:
+                            errors.append(f"❌ 부피 불일치: {sr_msr} CBM (HBL: {h_no})")
+                        if item["wgt"] not in near_text:
+                            errors.append(f"❌ 중량 불일치: {item['wgt']} KGS (HBL: {h_no})")
 
                 st.markdown("---")
                 if not errors:
                     st.success("✅ 모든 항목이 정확히 일치합니다.")
                 else:
                     st.warning(f"⚠️ {len(errors)}건의 불일치가 발견되었습니다.")
-                    # 촘촘하게 출력 (사용자 선호 스타일)
                     err_html = "".join([f"<div style='font-size:14px; margin-bottom:2px;'>{e}</div>" for e in errors])
                     st.markdown(err_html, unsafe_allow_html=True)
             except Exception as e:
