@@ -3,7 +3,7 @@ import pandas as pd
 import os
 from datetime import datetime, timedelta, timezone
 
-# --- 1. 유틸리티 함수 ---
+# --- 1. 유틸리티 함수 (카고3 동일) ---
 def format_unit(unit, count, force_to_pkg=False):
     u_str = str(unit).upper() if pd.notna(unit) else "PKG"
     m = {'PK':'PKG', 'PL':'PLT', 'CT':'CTN'}
@@ -18,13 +18,17 @@ def format_number(v):
         return t.rstrip('0').rstrip('.') if '.' in t else t
     except: return str(v)
 
-# [수정] 한국 시간(KST) 강제 설정 로직 반영
+# [개선] 중복 로그 방지 + 한국 시간 고정
 def log_uploaded_filename(fn, category="SR"):
-    p = "upload_log.txt"
-    kst = timezone(timedelta(hours=9))
-    now = datetime.now(kst).strftime("%Y-%m-%d %H:%M:%S")
-    entry = f"[{now}] ({category}) {fn}\n"
-    with open(p, "a", encoding='utf-8') as f: f.write(entry)
+    log_key = f"logged_{fn}_{category}"
+    if log_key not in st.session_state:
+        p = "upload_log.txt"
+        kst = timezone(timedelta(hours=9))
+        now = datetime.now(kst).strftime("%Y-%m-%d %H:%M:%S")
+        entry = f"[{now}] ({category}) {fn}\n"
+        with open(p, "a", encoding='utf-8') as f:
+            f.write(entry)
+        st.session_state[log_key] = True
 
 # --- 2. 페이지 설정 ---
 st.set_page_config(page_title="Europe Docs tool", layout="wide")
@@ -39,7 +43,7 @@ with tab1:
         force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환", value=False)
         mark_spacing = st.checkbox("MARK 란 간격 띄우기", value=False)
     with col_up2:
-        item_file = st.file_uploader("2. 하우스리스트 -> S/R NO 검색 -> 엑셀내려받기 파일 입력(품목명, HS CODE 입력 가능)_선택사항", type=["xlsx"], key="item_sub")
+        item_file = st.file_uploader("2. 품목/HS CODE 정보 파일 입력", type=["xlsx"], key="item_sub")
 
     st.divider()
 
@@ -48,21 +52,32 @@ with tab1:
         try:
             log_uploaded_filename(sr_file.name, "SR")
             sr_df = pd.read_excel(sr_file)
+            
             item_dict = {}; empty_line_bls = [] 
             if item_file:
-                item_df = pd.read_excel(item_file, header=1)
-                item_df.columns = [str(c).strip() for c in item_df.columns]
-                if "House B/L No" in item_df.columns and "품목" in item_df.columns:
+                log_uploaded_filename(item_file.name, "ITEM")
+                # [개선] 헤더 위치를 유연하게 찾기 위해 여러 시도
+                item_df = pd.read_excel(item_file)
+                # 컬럼명에서 키워드 추출 로직
+                cols_map = {col: str(col).upper().replace(" ", "") for col in item_df.columns}
+                
+                bl_col = next((c for c, v in cols_map.items() if "HBL" in v or "HOUSE" in v or "B/LNO" in v), None)
+                desc_col = next((c for c, v in cols_map.items() if "DESC" in v or "품목" in v or "GOODS" in v), None)
+                hs_col = next((c for c, v in cols_map.items() if "HS" in v), None)
+
+                if bl_col and desc_col:
                     for _, row in item_df.iterrows():
-                        h_no = str(row["House B/L No"]).strip()
-                        desc_val = str(row["품목"]).strip() if pd.notna(row["품목"]) else ""
-                        hs_val = str(row.get("HS CODE", "")).strip() if pd.notna(row.get("HS CODE", "")) else ""
-                        if h_no and h_no != "nan":
+                        h_no = str(row[bl_col]).strip()
+                        desc_val = str(row[desc_col]).strip() if pd.notna(row[desc_col]) else ""
+                        hs_val = str(row[hs_col]).strip() if hs_col and pd.notna(row[hs_col]) else ""
+                        
+                        if h_no and h_no.lower() != "nan":
                             item_dict[h_no] = {"desc": desc_val, "hs": hs_val}
                             if "\n\n" in desc_val: empty_line_bls.append(h_no)
 
-            cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
-            df = sr_df[cols].copy().dropna(subset=['House B/L No'])
+            # --- 데이터 처리 시작 (카고3 불변 로직) ---
+            target_cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
+            df = sr_df[target_cols].copy().dropna(subset=['House B/L No'])
             df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
             df['단위'] = df['단위'].fillna('PKG')
             
@@ -73,6 +88,7 @@ with tab1:
             lines = []
             num_containers = len(total)
             
+            # --- 상단 TOTAL 영역 ---
             if num_containers > 1:
                 g_p = int(total['포장갯수'].sum())
                 total_line = f"TOTAL: {g_p} PKGS / {format_number(total['Weight'].sum())} KGS / {format_number(total['Measure'].sum())} CBM"
@@ -82,6 +98,7 @@ with tab1:
                 lines.append(""); lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
                 lines.append(f"TOTAL: {int(r['포장갯수'])} PKGS / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
             
+            # --- MARK 영역 ---
             lines.extend(["", "", "<MARK>", ""]) 
             for i, r in marks.iterrows():
                 if i > 0: lines.append("") 
@@ -89,11 +106,10 @@ with tab1:
                 lines.append("") 
                 for hbl in sorted(r['House B/L No']):
                     lines.append(hbl)
-                    if num_containers <= 4 and mark_spacing:
-                        lines.append("") 
-                if not (num_containers <= 4 and mark_spacing):
-                    lines.append("") 
+                    if num_containers <= 4 and mark_spacing: lines.append("")
+                if not (num_containers <= 4 and mark_spacing): lines.append("") 
             
+            # --- DESCRIPTION 영역 ---
             lines.extend(["", "<DESCRIPTION>", ""]) 
             prev = (None, None)
             for _, r in desc_df.iterrows():
@@ -105,10 +121,12 @@ with tab1:
                 h_no_raw = str(r['House B/L No']).strip()
                 lines.append(h_no_raw)
                 lines.append(f"{int(r['포장갯수'])} {format_unit(r['단위'], r['포장갯수'], force_to_pkg)} / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
-                if h_no_raw in item_dict:
-                    info = item_dict[h_no_raw]
-                    if info["desc"] and info["desc"].lower() != "nan": lines.append(info["desc"])
-                    if info["hs"] and info["hs"].lower() != "nan": lines.append(info["hs"])
+                
+                # 품목 매칭 로직 (HBL 번호가 포함되어 있는지 확인)
+                matching_info = item_dict.get(h_no_raw)
+                if matching_info:
+                    if matching_info["desc"] and matching_info["desc"].lower() != "nan": lines.append(matching_info["desc"])
+                    if matching_info["hs"] and matching_info["hs"].lower() != "nan": lines.append(matching_info["hs"])
                 lines.append("")
             
             result = "\n".join(lines)
