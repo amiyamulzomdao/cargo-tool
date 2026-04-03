@@ -10,7 +10,7 @@ try:
 except ImportError:
     pass
 
-# --- 1. 유틸리티 함수 (카고3/4 순정 디자인 및 폰트 유지) ---
+# --- 1. 유틸리티 함수 (카고4 불변 원칙) ---
 def format_unit(unit, count, force_to_pkg=False):
     u_str = str(unit).upper() if pd.notna(unit) else "PKG"
     m = {'PK':'PKG', 'PL':'PLT', 'CT':'CTN'}
@@ -20,7 +20,7 @@ def format_unit(unit, count, force_to_pkg=False):
 
 def format_number(v):
     try:
-        val = float(str(v).replace(',', ''))
+        val = float(v)
         t = f"{round(val, 3):.3f}"
         return t.rstrip('0').rstrip('.') if '.' in t else t
     except: return str(v)
@@ -32,9 +32,11 @@ def log_uploaded_filename(fn, category="SR"):
     entry = f"[{now}] ({category}) {fn}\n"
     with open(p, "a", encoding='utf-8') as f: f.write(entry)
 
-# --- 2. 메모장 데이터 분석 ---
+# --- 2. 메모장 분석 엔진 (HBL별 상세 수치 추출) ---
 def parse_sr_txt(txt_content):
-    data = {"total_pkg": 0, "total_wgt": "0", "total_msr": "0", "containers": [], "seals": [], "hbl_list": []}
+    data = {"containers": [], "seals": [], "hbl_list": [], "total_pkg": 0, "total_wgt": "0", "total_msr": "0"}
+    
+    # 총계 추출
     pkg_match = re.search(r"TOTAL:\s*(\d+)\s*PKGS", txt_content)
     wgt_match = re.search(r"/\s*([\d.]+)\s*KGS", txt_content)
     msr_match = re.search(r"/\s*([\d.]+)\s*CBM", txt_content)
@@ -42,15 +44,23 @@ def parse_sr_txt(txt_content):
     if wgt_match: data["total_wgt"] = wgt_match.group(1)
     if msr_match: data["total_msr"] = msr_match.group(1)
     
+    # 컨테이너/씰 추출
     cntr_matches = re.findall(r"([A-Z]{4}\d{7})\s*/\s*([A-Z0-9]+)", txt_content)
     for c, s in cntr_matches:
         data["containers"].append(c); data["seals"].append(s)
         
+    # HBL 상세 데이터 추출
     if "<DESCRIPTION>" in txt_content:
         desc_part = txt_content.split("<DESCRIPTION>")[-1]
-        blocks = re.findall(r"([A-Z0-9]{8,16})\n(\d+)\s*\w+\s*/\s*([\d.]+)\s*KGS\s*/\s*([\d.]+)\s*CBM", desc_part)
-        for hbl, pkg, wgt, msr in blocks:
-            data["hbl_list"].append({"hbl": hbl, "wgt": format_number(wgt), "msr": format_number(msr)})
+        # HBL번호, 수량, 중량, 부피 순서
+        hbl_blocks = re.findall(r"([A-Z0-9]{8,16})\n(\d+)\s*\w+\s*/\s*([\d.]+)\s*KGS\s*/\s*([\d.]+)\s*CBM", desc_part)
+        for hbl, pkg, wgt, msr in hbl_blocks:
+            search_area = desc_part.split(hbl)[-1].split("\n\n")[0]
+            hs_match = re.search(r"(\d{4}\.\d{2})", search_area)
+            data["hbl_list"].append({
+                "hbl": hbl, "pkg": pkg, "wgt": wgt, "msr": msr, 
+                "hs": hs_match.group(1) if hs_match else ""
+            })
     return data
 
 # --- 3. 페이지 설정 ---
@@ -59,7 +69,7 @@ st.title("🚢 Europe Docs tool")
 
 tab1, tab2, tab3 = st.tabs(["SR 정리", "MBL 검수", "업로드 기록"])
 
-# --- TAB 1: SR 정리 (사용자님이 선호하는 오리지널 레이아웃) ---
+# --- TAB 1: SR 정리 ---
 with tab1:
     col_up1, col_up2 = st.columns(2)
     with col_up1:
@@ -136,63 +146,70 @@ with tab1:
                 st.text_area("결과창", result, height=800, label_visibility="collapsed")
         except Exception as e: st.error(f"오류 발생: {e}")
 
-# --- TAB 2: MBL 검수 (HBL 텍스트 위치 기반 정밀 검수) ---
+# --- TAB 2: MBL 검수 (요청사항 반영) ---
 with tab2:
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("**1. 메모장 정보 입력**")
-        input_mode = st.radio("방식 선택", ["복사 붙여넣기", "파일 업로드"], horizontal=True, label_visibility="collapsed")
+        input_mode = st.radio("1. 메모장 정보 입력 방식 선택", ["복사 붙여넣기", "파일 업로드"], horizontal=True)
         memo_content = ""
         if input_mode == "복사 붙여넣기":
-            memo_content = st.text_area("메모장 내용을 여기에 붙여넣으세요.", height=250)
+            memo_content = st.text_area("메모장 내용을 붙여넣으세요.", height=250)
         else:
             m_file = st.file_uploader("메모장 파일 업로드 (.txt)", type=["txt"], key="m_up")
             if m_file: memo_content = m_file.read().decode("utf-8")
             
     with col2:
-        st.markdown("**2. 선사 DRAFT BL 업로드**")
-        draft_pdf = st.file_uploader("PDF 파일 업로드 (.pdf)", type=["pdf"], key="d_up", label_visibility="collapsed")
+        draft_pdf = st.file_uploader("2. 선사 DRAFT BL 업로드 (.pdf)", type=["pdf"], key="d_up")
         
+        # [레이아웃 최적화] PDF 업로드 칸 바로 아래에 검수 결과 노출
         if memo_content and draft_pdf:
             try:
                 sr = parse_sr_txt(memo_content)
-                errors = []
                 with pdfplumber.open(draft_pdf) as pdf:
-                    for page in pdf.pages:
-                        p_text = page.extract_text()
-                        if not p_text: continue
-                        p_text_upper = p_text.upper()
-                        
-                        for item in sr["hbl_list"]:
-                            hbl = item["hbl"]
-                            if hbl in p_text_upper:
-                                # HBL 번호가 발견된 위치 근처 600자(MSC Rider 표 한 칸 분량)를 긁어옴
-                                start = p_text_upper.find(hbl)
-                                context = p_text_upper[start : start + 600]
-                                
-                                # 해당 HBL 영역 내에서 우리가 기대하는 수치(CBM, KGS)가 있는지 확인
-                                if item["msr"] not in context:
-                                    # 잘못된 수치가 적혀있을 가능성이 높으므로 에러 메시지 구성
-                                    # 해당 영역에서 숫자 + CU. M 패턴을 찾아 실제 적힌 수치 추출 시도
-                                    found_val = re.search(r"([\d,]+\.\d{3})\s*(?:CU\.\s*M|CBM)", context)
-                                    wrong_val = found_val.group(1) if found_val else "확인불가"
-                                    errors.append(f"❌ 부피 불일치: {item['msr']} CBM (HBL: {hbl}) → PDF상 {wrong_val} 기재됨")
-                                
-                                if item["wgt"] not in context:
-                                    found_wgt = re.search(r"([\d,]+\.\d{3})\s*KGS", context)
-                                    wrong_wgt = found_wgt.group(1) if found_wgt else "확인불가"
-                                    errors.append(f"❌ 중량 불일치: {item['wgt']} KGS (HBL: {hbl}) → PDF상 {wrong_wgt} 기재됨")
+                    full_text = " ".join([p.extract_text().upper() for p in pdf.pages])
+                
+                errors = []
+                
+                # [1] 총계 검사
+                if str(sr["total_pkg"]) not in full_text: errors.append(f"❌ 총 수량 불일치: {sr['total_pkg']} PKGS")
+                if sr["total_wgt"] not in full_text: errors.append(f"❌ 총 중량 불일치: {sr['total_wgt']} KGS")
+                if sr["total_msr"] not in full_text: errors.append(f"❌ 총 부피 불일치: {sr['total_msr']} CBM")
+                
+                # [2] 컨테이너/씰 검사
+                for c in set(sr["containers"]):
+                    if c.upper() not in full_text: errors.append(f"❌ 컨테이너 번호 누락/오류: {c}")
+                for s in set(sr["seals"]):
+                    if s and s.upper() not in full_text: errors.append(f"❌ Seal 번호 누락/오류: {s}")
+                
+                # [3] HBL별 정밀 상세 검사 (HBL 번호 명시)
+                for item in sr["hbl_list"]:
+                    h_no = item["hbl"]
+                    if h_no not in full_text:
+                        errors.append(f"❌ B/L 번호 찾을 수 없음: {h_no}")
+                        continue
+                    
+                    # 중량/부피 정밀 체크
+                    if item["wgt"] not in full_text:
+                        errors.append(f"❌ 중량 불일치 (HBL: {h_no}): {item['wgt']} KGS")
+                    if item["msr"] not in full_text:
+                        errors.append(f"❌ 부피 불일치 (HBL: {h_no}): {item['msr']} CBM (확인 요망)")
+                    
+                    # HS CODE 체크
+                    if item["hs"] and item["hs"] not in full_text:
+                        errors.append(f"❌ HS CODE 불일치 (HBL: {h_no}): {item['hs']}")
 
-                st.divider()
+                st.markdown("---")
                 if not errors:
-                    st.success("✅ 모든 항목이 정확히 일치합니다.")
+                    st.success("✅ 불일치 항목 없음 (데이터 일치)")
                 else:
-                    # 사용자님이 원하셨던 '촘촘한' 스타일 유지
-                    for err in errors:
-                        st.error(err)
+                    st.warning(f"⚠️ 총 {len(errors)}건의 불일치가 발견되었습니다.")
+                    # [촘촘한 출력] 폰트 크기를 살짝 줄이고 간격을 좁게 표시
+                    err_html = "".join([f"<li style='font-size:14px; margin-bottom:2px;'>{e}</li>" for e in errors])
+                    st.markdown(f"<ul style='list-style-type:none; padding-left:0;'>{err_html}</ul>", unsafe_allow_html=True)
             except Exception as e:
                 st.error(f"오류 발생: {e}")
 
+# --- TAB 3: 업로드 기록 ---
 with tab3:
     if os.path.exists("upload_log.txt"):
         with open("upload_log.txt", "r", encoding='utf-8') as f: st.text_area("Log", f.read(), height=500)
