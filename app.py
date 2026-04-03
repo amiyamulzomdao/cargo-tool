@@ -3,7 +3,7 @@ import pandas as pd
 import os
 from datetime import datetime, timedelta, timezone
 
-# --- 1. 유틸리티 함수 (카고3 불변 원칙) ---
+# --- 1. 유틸리티 함수 ---
 def format_unit(unit, count, force_to_pkg=False):
     u_str = str(unit).upper() if pd.notna(unit) else "PKG"
     m = {'PK':'PKG', 'PL':'PLT', 'CT':'CTN'}
@@ -18,6 +18,7 @@ def format_number(v):
         return t.rstrip('0').rstrip('.') if '.' in t else t
     except: return str(v)
 
+# [불변] 한국 시간(KST) 강제 설정 로직
 def log_uploaded_filename(fn, category="SR"):
     p = "upload_log.txt"
     kst = timezone(timedelta(hours=9))
@@ -38,7 +39,7 @@ with tab1:
         force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환", value=False)
         mark_spacing = st.checkbox("MARK 란 간격 띄우기", value=False)
     with col_up2:
-        item_file = st.file_uploader("2. 품목 정보 파일 입력", type=["xlsx"], key="item_sub")
+        item_file = st.file_uploader("2. 하우스리스트 -> S/R NO 검색 -> 엑셀내려받기 파일 입력(품목명, HS CODE 입력 가능)_선택사항", type=["xlsx"], key="item_sub")
 
     st.divider()
 
@@ -48,24 +49,17 @@ with tab1:
             log_uploaded_filename(sr_file.name, "SR")
             sr_df = pd.read_excel(sr_file)
             item_dict = {}; empty_line_bls = [] 
-            
             if item_file:
-                # [순정 규칙] 제목 줄은 2행(header=1)
+                # [순정] 헤더 위치 고정
                 item_df = pd.read_excel(item_file, header=1)
                 item_df.columns = [str(c).strip() for c in item_df.columns]
-                
                 if "House B/L No" in item_df.columns and "품목" in item_df.columns:
                     for _, row in item_df.iterrows():
                         h_no = str(row["House B/L No"]).strip()
+                        desc_val = str(row["품목"]).strip() if pd.notna(row["품목"]) else ""
+                        hs_val = str(row.get("HS CODE", "")).strip() if pd.notna(row.get("HS CODE", "")) else ""
                         if h_no and h_no != "nan":
-                            desc_val = str(row["품목"]).strip() if pd.notna(row["품목"]) else ""
-                            hs_val = str(row.get("HS CODE", "")).strip() if pd.notna(row.get("HS CODE", "")) else ""
-                            
-                            # [신규 로직] 동일 B/L에 데이터가 여러 개면 리스트로 쌓기
-                            if h_no not in item_dict:
-                                item_dict[h_no] = []
-                            item_dict[h_no].append({"desc": desc_val, "hs": hs_val})
-                            
+                            item_dict[h_no] = {"desc": desc_val, "hs": hs_val}
                             if "\n\n" in desc_val: empty_line_bls.append(h_no)
 
             cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
@@ -78,7 +72,9 @@ with tab1:
             desc_df = df.sort_values(['컨테이너 번호', 'Seal#1', 'House B/L No'])
             
             lines = []
-            if len(total) > 1:
+            num_containers = len(total)
+            
+            if num_containers > 1:
                 g_p = int(total['포장갯수'].sum())
                 total_line = f"TOTAL: {g_p} PKGS / {format_number(total['Weight'].sum())} KGS / {format_number(total['Measure'].sum())} CBM"
                 lines.extend(["[GRAND TOTAL]", total_line, "-" * (len(total_line) + 10)]) 
@@ -93,9 +89,11 @@ with tab1:
                 lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
                 lines.append("") 
                 for hbl in sorted(r['House B/L No']):
-                    lines.append(str(hbl).strip())
-                    if len(total) <= 4 and mark_spacing: lines.append("") 
-                if not (len(total) <= 4 and mark_spacing): lines.append("") 
+                    lines.append(hbl)
+                    if num_containers <= 4 and mark_spacing:
+                        lines.append("") 
+                if not (num_containers <= 4 and mark_spacing):
+                    lines.append("") 
             
             lines.extend(["", "<DESCRIPTION>", ""]) 
             prev = (None, None)
@@ -105,18 +103,13 @@ with tab1:
                     if prev[0] is not None: lines.extend(["", ""]) 
                     lines.extend([f"{cur[0]} / {cur[1]}", ""])
                     prev = cur
-                
                 h_no_raw = str(r['House B/L No']).strip()
                 lines.append(h_no_raw)
                 lines.append(f"{int(r['포장갯수'])} {format_unit(r['단위'], r['포장갯수'], force_to_pkg)} / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
-                
-                # [출력 개선] 매칭된 품목들을 HS CODE와 함께 예쁘게 출력
                 if h_no_raw in item_dict:
-                    for item in item_dict[h_no_raw]:
-                        if item["desc"] and item["desc"].lower() != "nan":
-                            lines.append(item["desc"])
-                        if item["hs"] and item["hs"].lower() != "nan":
-                            lines.append(item["hs"])
+                    info = item_dict[h_no_raw]
+                    if info["desc"] and info["desc"].lower() != "nan": lines.append(info["desc"])
+                    if info["hs"] and info["hs"].lower() != "nan": lines.append(info["hs"])
                 lines.append("")
             
             result = "\n".join(lines)
