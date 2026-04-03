@@ -3,7 +3,7 @@ import pandas as pd
 import os
 from datetime import datetime, timedelta, timezone
 
-# --- 1. 유틸리티 함수 (카고3 동일) ---
+# --- 1. 유틸리티 함수 (카고3 불변 로직) ---
 def format_unit(unit, count, force_to_pkg=False):
     u_str = str(unit).upper() if pd.notna(unit) else "PKG"
     m = {'PK':'PKG', 'PL':'PLT', 'CT':'CTN'}
@@ -18,7 +18,6 @@ def format_number(v):
         return t.rstrip('0').rstrip('.') if '.' in t else t
     except: return str(v)
 
-# [개선] 중복 로그 방지 + 한국 시간 고정
 def log_uploaded_filename(fn, category="SR"):
     log_key = f"logged_{fn}_{category}"
     if log_key not in st.session_state:
@@ -43,6 +42,7 @@ with tab1:
         force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환", value=False)
         mark_spacing = st.checkbox("MARK 란 간격 띄우기", value=False)
     with col_up2:
+        # 이번에 주신 품목.xlsx 전용 업로더
         item_file = st.file_uploader("2. 품목/HS CODE 정보 파일 입력", type=["xlsx"], key="item_sub")
 
     st.divider()
@@ -56,26 +56,21 @@ with tab1:
             item_dict = {}; empty_line_bls = [] 
             if item_file:
                 log_uploaded_filename(item_file.name, "ITEM")
-                # [개선] 헤더 위치를 유연하게 찾기 위해 여러 시도
+                # [수정] 헤더를 첫 번째 줄(0)부터 바로 읽도록 고정
                 item_df = pd.read_excel(item_file)
-                # 컬럼명에서 키워드 추출 로직
-                cols_map = {col: str(col).upper().replace(" ", "") for col in item_df.columns}
                 
-                bl_col = next((c for c, v in cols_map.items() if "HBL" in v or "HOUSE" in v or "B/LNO" in v), None)
-                desc_col = next((c for c, v in cols_map.items() if "DESC" in v or "품목" in v or "GOODS" in v), None)
-                hs_col = next((c for c, v in cols_map.items() if "HS" in v), None)
+                # 주신 파일의 컬럼명에 맞춰서 매칭 (H B/L No, Description, HS Code)
+                for _, row in item_df.iterrows():
+                    # 컬럼명이 파일과 정확히 일치해야 함
+                    h_no = str(row.get("H B/L No", "")).strip()
+                    desc_val = str(row.get("Description", "")).strip() if pd.notna(row.get("Description")) else ""
+                    hs_val = str(row.get("HS Code", "")).strip() if pd.notna(row.get("HS Code")) else ""
+                    
+                    if h_no and h_no.lower() != "nan":
+                        item_dict[h_no] = {"desc": desc_val, "hs": hs_val}
+                        if "\n\n" in desc_val: empty_line_bls.append(h_no)
 
-                if bl_col and desc_col:
-                    for _, row in item_df.iterrows():
-                        h_no = str(row[bl_col]).strip()
-                        desc_val = str(row[desc_col]).strip() if pd.notna(row[desc_col]) else ""
-                        hs_val = str(row[hs_col]).strip() if hs_col and pd.notna(row[hs_col]) else ""
-                        
-                        if h_no and h_no.lower() != "nan":
-                            item_dict[h_no] = {"desc": desc_val, "hs": hs_val}
-                            if "\n\n" in desc_val: empty_line_bls.append(h_no)
-
-            # --- 데이터 처리 시작 (카고3 불변 로직) ---
+            # --- 데이터 처리 로직 (카고3 불변) ---
             target_cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
             df = sr_df[target_cols].copy().dropna(subset=['House B/L No'])
             df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
@@ -88,7 +83,6 @@ with tab1:
             lines = []
             num_containers = len(total)
             
-            # --- 상단 TOTAL 영역 ---
             if num_containers > 1:
                 g_p = int(total['포장갯수'].sum())
                 total_line = f"TOTAL: {g_p} PKGS / {format_number(total['Weight'].sum())} KGS / {format_number(total['Measure'].sum())} CBM"
@@ -98,7 +92,6 @@ with tab1:
                 lines.append(""); lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
                 lines.append(f"TOTAL: {int(r['포장갯수'])} PKGS / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
             
-            # --- MARK 영역 ---
             lines.extend(["", "", "<MARK>", ""]) 
             for i, r in marks.iterrows():
                 if i > 0: lines.append("") 
@@ -109,7 +102,6 @@ with tab1:
                     if num_containers <= 4 and mark_spacing: lines.append("")
                 if not (num_containers <= 4 and mark_spacing): lines.append("") 
             
-            # --- DESCRIPTION 영역 ---
             lines.extend(["", "<DESCRIPTION>", ""]) 
             prev = (None, None)
             for _, r in desc_df.iterrows():
@@ -122,11 +114,10 @@ with tab1:
                 lines.append(h_no_raw)
                 lines.append(f"{int(r['포장갯수'])} {format_unit(r['단위'], r['포장갯수'], force_to_pkg)} / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
                 
-                # 품목 매칭 로직 (HBL 번호가 포함되어 있는지 확인)
-                matching_info = item_dict.get(h_no_raw)
-                if matching_info:
-                    if matching_info["desc"] and matching_info["desc"].lower() != "nan": lines.append(matching_info["desc"])
-                    if matching_info["hs"] and matching_info["hs"].lower() != "nan": lines.append(matching_info["hs"])
+                if h_no_raw in item_dict:
+                    info = item_dict[h_no_raw]
+                    if info["desc"] and info["desc"].lower() != "nan": lines.append(info["desc"])
+                    if info["hs"] and info["hs"].lower() != "nan": lines.append(info["hs"])
                 lines.append("")
             
             result = "\n".join(lines)
