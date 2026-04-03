@@ -56,32 +56,34 @@ with tab1:
             if item_file:
                 log_uploaded_filename(item_file.name, "ITEM")
                 
-                # [강력 수정] 헤더 없이 모든 데이터를 문자열로 읽음
-                item_raw = pd.read_excel(item_file, header=None).astype(str)
+                # [오류 해결 핵심] 헤더 없이 읽고 모든 데이터를 강제로 문자열화
+                item_raw = pd.read_excel(item_file, header=None).fillna("").astype(str)
                 
                 bl_idx, desc_idx, hs_idx = None, None, None
                 
-                # 모든 셀을 뒤져서 제목 위치 찾기
+                # 모든 셀을 뒤져서 제목 위치 찾기 (float 오류 방지 위해 str() 처리 강화)
                 for r_idx in range(len(item_raw)):
                     row = item_raw.iloc[r_idx]
+                    found_header = False
                     for c_idx, val in enumerate(row):
-                        v_clean = val.upper().replace(" ", "").replace("\n", "")
+                        # 여기서 str()로 감싸서 float 오류 원천 차단
+                        v_clean = str(val).upper().replace(" ", "").replace("\n", "")
                         if "HOUSEB/L" in v_clean or "HB/L" in v_clean or "BLNO" in v_clean:
                             bl_idx = c_idx
+                            found_header = True
                         if "품목" in v_clean or "DESCRIPTION" in v_clean or "DESC" in v_clean:
                             desc_idx = c_idx
+                            found_header = True
                         if "HSCODE" in v_clean or "HS" in v_clean:
                             hs_idx = c_idx
                     
-                    # 제목을 다 찾았으면 해당 줄 다음부터 데이터 수집
-                    if bl_idx is not None and desc_idx is not None:
+                    if found_header and bl_idx is not None and desc_idx is not None:
                         for data_r in range(r_idx + 1, len(item_raw)):
-                            h_no = item_raw.iloc[data_r, bl_idx].strip()
-                            # 소수점 .0 제거
+                            h_no = str(item_raw.iloc[data_r, bl_idx]).strip()
                             if h_no.endswith('.0'): h_no = h_no[:-2]
                             
-                            desc_v = item_raw.iloc[data_r, desc_idx].strip()
-                            hs_v = item_raw.iloc[data_r, hs_idx].strip() if hs_idx is not None else ""
+                            desc_v = str(item_raw.iloc[data_r, desc_idx]).strip()
+                            hs_v = str(item_raw.iloc[data_r, hs_idx]).strip() if hs_idx is not None else ""
                             
                             if h_no and h_no.lower() not in ["nan", "none", ""]:
                                 item_dict[h_no] = {
