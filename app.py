@@ -55,17 +55,31 @@ with tab1:
             item_dict = {}; empty_line_bls = [] 
             if item_file:
                 log_uploaded_filename(item_file.name, "ITEM")
-                item_df = pd.read_excel(item_file)
                 
-                # [핵심 수정] 컬럼명에서 'House B/L No'와 '품목'이 포함된 열을 자동으로 찾음
-                col_list = item_df.columns.tolist()
-                bl_col = next((c for c in col_list if "House B/L No" in str(c) or "H B/L No" in str(c)), None)
-                desc_col = next((c for c in col_list if "품목" in str(c) or "Description" in str(c)), None)
-                hs_col = next((c for c in col_list if "HS Code" in str(c) or "HS CODE" in str(c)), None)
+                # [복구 포인트] 헤더 위치를 찾기 위해 파일의 처음 5줄을 스캔
+                item_raw = pd.read_excel(item_file, header=None)
+                header_idx = 0
+                for i, row in item_raw.head(5).iterrows():
+                    row_str = " ".join([str(x).upper() for x in row if pd.notna(x)])
+                    if "B/L" in row_str or "HOUSE" in row_str or "품목" in row_str or "DESC" in row_str:
+                        header_idx = i
+                        break
+                
+                # 찾은 헤더 위치로 다시 읽기
+                item_df = pd.read_excel(item_file, header=header_idx)
+                item_df.columns = [str(c).strip() for c in item_df.columns]
+                
+                # 컬럼명 유연 매칭 (카고3 확장형)
+                bl_col = next((c for c in item_df.columns if any(k in c.upper().replace(" ", "") for k in ["HOUSEB/L", "HB/L", "BLNO"])), None)
+                desc_col = next((c for c in item_df.columns if any(k in c.upper() for k in ["품목", "DESC"])), None)
+                hs_col = next((c for c in item_df.columns if "HS" in c.upper()), None)
                 
                 if bl_col and desc_col:
                     for _, row in item_df.iterrows():
+                        # 번호를 문자열로 변환하고 .0 소수점 제거 (매칭 실패의 주원인)
                         h_no = str(row[bl_col]).strip()
+                        if h_no.endswith('.0'): h_no = h_no[:-2]
+                        
                         desc_val = str(row[desc_col]).strip() if pd.notna(row[desc_col]) else ""
                         hs_val = str(row[hs_col]).strip() if hs_col and pd.notna(row[hs_col]) else ""
                         
@@ -77,7 +91,7 @@ with tab1:
             target_cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
             df = sr_df[target_cols].copy().dropna(subset=['House B/L No'])
             df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
-            df['단위'] = df['단위'].fillna('PKG')
+            df['House B/L No'] = df['House B/L No'].astype(str).str.strip()
             
             total = df.groupby(['컨테이너 번호', 'Seal#1']).agg(포장갯수=('포장갯수','sum'), Weight=('Weight','sum'), Measure=('Measure','sum')).reset_index()
             marks = df.groupby(['컨테이너 번호', 'Seal#1'])['House B/L No'].unique().reset_index()
@@ -114,11 +128,14 @@ with tab1:
                     lines.extend([f"{cur[0]} / {cur[1]}", ""])
                     prev = cur
                 h_no_raw = str(r['House B/L No']).strip()
+                if h_no_raw.endswith('.0'): h_no_raw = h_no_raw[:-2]
+                
                 lines.append(h_no_raw)
                 lines.append(f"{int(r['포장갯수'])} {format_unit(r['단위'], r['포장갯수'], force_to_pkg)} / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
                 
-                if h_no_raw in item_dict:
-                    info = item_dict[h_no_raw]
+                # 최종 매칭 시도
+                info = item_dict.get(h_no_raw)
+                if info:
                     if info["desc"] and info["desc"].lower() != "nan": lines.append(info["desc"])
                     if info["hs"] and info["hs"].lower() != "nan": lines.append(info["hs"])
                 lines.append("")
