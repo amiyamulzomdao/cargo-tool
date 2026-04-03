@@ -39,7 +39,7 @@ def parse_sr_txt(txt_content):
         "containers_data": [], "hbl_list": []
     }
     
-    # 1. 전체 그랜드 토탈 추출
+    # 1. 전체 그랜드 TOTAL 추출
     pkg_match = re.search(r"TOTAL:\s*(\d+)\s*PKGS", txt_content)
     wgt_match = re.search(r"/\s*([\d.]+)\s*KGS", txt_content)
     msr_match = re.search(r"/\s*([\d.]+)\s*CBM", txt_content)
@@ -151,7 +151,7 @@ with tab1:
                 st.text_area("결과창", result, height=800, label_visibility="collapsed")
         except Exception as e: st.error(f"오류 발생: {e}")
 
-# --- TAB 2: MBL 검수 (컨테이너별 TOTAL 검증) ---
+# --- TAB 2: MBL 검수 (용어 수정 반영) ---
 with tab2:
     col1, col2 = st.columns(2)
     with col1:
@@ -179,9 +179,9 @@ with tab2:
                 # [1] 전체 그랜드 TOTAL 검사
                 if str(sr["total_pkg"]) not in full_text: errors.append(f"❌ 전체 TOTAL 수량 불일치: {sr['total_pkg']} PKGS")
                 if sr["total_wgt"] not in full_text: errors.append(f"❌ 전체 TOTAL 중량 불일치: {sr['total_wgt']} KGS")
-                if sr["total_msr"] not in full_text: errors.append(f"❌ 전체 TOTAL 부피 불일치: {sr['total_msr']} CBM")
+                if sr["total_msr"] not in full_text: errors.append(f"❌ 전체 TOTAL CBM 불일치: {sr['total_msr']} CBM")
                 
-                # [2] 컨테이너별 TOTAL 정보 검사
+                # [2] 컨테이너별 TOTAL 정보 검증 (용어 수정: TOTAL CNTR)
                 for c_data in sr["containers_data"]:
                     c_no = c_data["no"]
                     if c_no not in full_text: errors.append(f"❌ 컨테이너 번호 누락/오류: {c_no}")
@@ -191,13 +191,13 @@ with tab2:
                     context = full_text[c_pos:c_pos+1000] if c_pos != -1 else full_text
                     
                     if str(c_data["pkg"]) not in context:
-                        errors.append(f"❌ 컨테이너 TOTAL 수량 불일치 (CNTR: {c_no}): {c_data['pkg']} PKGS")
+                        errors.append(f"❌ TOTAL CNTR 수량 불일치 (CNTR: {c_no}): {c_data['pkg']} PKGS")
                     if c_data["wgt"] not in context:
-                        errors.append(f"❌ 컨테이너 TOTAL 중량 불일치 (CNTR: {c_no}): {c_data['wgt']} KGS")
+                        errors.append(f"❌ TOTAL CNTR 중량 불일치 (CNTR: {c_no}): {c_data['wgt']} KGS")
                     if c_data["msr"] not in context:
-                        errors.append(f"❌ 컨테이너 TOTAL 부피 불일치 (CNTR: {c_no}): {c_data['msr']} CBM")
+                        errors.append(f"❌ TOTAL CNTR CBM 불일치 (CNTR: {c_no}): {c_data['msr']} CBM")
 
-                # [3] HBL별 상세 검사
+                # [3] 개별 HBL 상세 검사 (용어 수정: CBM 불일치)
                 for item in sr["hbl_list"]:
                     h_no = item["hbl"]
                     if h_no not in full_text:
@@ -205,7 +205,7 @@ with tab2:
                         continue
                     
                     if item["wgt"] not in full_text: errors.append(f"❌ 중량 불일치 (HBL: {h_no}): {item['wgt']} KGS")
-                    if item["msr"] not in full_text: errors.append(f"❌ 부피 불일치 (HBL: {h_no}): {item['msr']} CBM (확인 요망)")
+                    if item["msr"] not in full_text: errors.append(f"❌ CBM 불일치 (HBL: {h_no}): {item['msr']} CBM (확인 요망)")
                     if item["hs"] and item["hs"] not in full_text: errors.append(f"❌ HS CODE 불일치 (HBL: {h_no}): {item['hs']}")
 
                 st.markdown("---")
