@@ -56,36 +56,40 @@ with tab1:
             if item_file:
                 log_uploaded_filename(item_file.name, "ITEM")
                 
-                # [강력한 데이터 추출] 모든 시트와 모든 행을 뒤져서 B/L과 품목 열을 찾음
-                item_raw = pd.read_excel(item_file, header=None)
+                # [강력 수정] 헤더 없이 모든 데이터를 문자열로 읽음
+                item_raw = pd.read_excel(item_file, header=None).astype(str)
                 
                 bl_idx, desc_idx, hs_idx = None, None, None
-                # 첫 10줄을 뒤져서 제목이 있는 열 번호를 찾음
-                for i in range(min(10, len(item_raw))):
-                    row_vals = [str(x).upper().replace(" ", "").replace("\n", "") for x in item_raw.iloc[i]]
-                    for idx, val in enumerate(row_vals):
-                        if any(k in val for k in ["HOUSEB/L", "HB/L", "BLNO", "B/LNO"]): bl_idx = idx
-                        if any(k in val for k in ["품목", "DESCRIPTION", "DESC"]): desc_idx = idx
-                        if "HS" in val: hs_idx = idx
+                
+                # 모든 셀을 뒤져서 제목 위치 찾기
+                for r_idx in range(len(item_raw)):
+                    row = item_raw.iloc[r_idx]
+                    for c_idx, val in enumerate(row):
+                        v_clean = val.upper().replace(" ", "").replace("\n", "")
+                        if "HOUSEB/L" in v_clean or "HB/L" in v_clean or "BLNO" in v_clean:
+                            bl_idx = c_idx
+                        if "품목" in v_clean or "DESCRIPTION" in v_clean or "DESC" in v_clean:
+                            desc_idx = c_idx
+                        if "HSCODE" in v_clean or "HS" in v_clean:
+                            hs_idx = c_idx
+                    
+                    # 제목을 다 찾았으면 해당 줄 다음부터 데이터 수집
                     if bl_idx is not None and desc_idx is not None:
-                        start_row = i + 1
+                        for data_r in range(r_idx + 1, len(item_raw)):
+                            h_no = item_raw.iloc[data_r, bl_idx].strip()
+                            # 소수점 .0 제거
+                            if h_no.endswith('.0'): h_no = h_no[:-2]
+                            
+                            desc_v = item_raw.iloc[data_r, desc_idx].strip()
+                            hs_v = item_raw.iloc[data_r, hs_idx].strip() if hs_idx is not None else ""
+                            
+                            if h_no and h_no.lower() not in ["nan", "none", ""]:
+                                item_dict[h_no] = {
+                                    "desc": desc_v if desc_v.lower() != "nan" else "",
+                                    "hs": hs_v if hs_v.lower() != "nan" else ""
+                                }
+                                if "\n\n" in desc_v: empty_line_bls.append(h_no)
                         break
-                else:
-                    start_row = 0 # 못 찾으면 처음부터
-
-                # 찾은 열 번호로 데이터 수집
-                if bl_idx is not None and desc_idx is not None:
-                    for r in range(start_row, len(item_raw)):
-                        h_no = str(item_raw.iloc[r, bl_idx]).strip()
-                        # .0 소수점 제거 및 공백 제거
-                        if h_no.endswith('.0'): h_no = h_no[:-2]
-                        
-                        desc_v = str(item_raw.iloc[r, desc_idx]).strip() if pd.notna(item_raw.iloc[r, desc_idx]) else ""
-                        hs_v = str(item_raw.iloc[r, hs_idx]).strip() if (hs_idx is not None and pd.notna(item_raw.iloc[r, hs_idx])) else ""
-                        
-                        if h_no and h_no.lower() != "nan" and h_no != "None":
-                            item_dict[h_no] = {"desc": desc_v, "hs": hs_v}
-                            if "\n\n" in desc_v: empty_line_bls.append(h_no)
 
             # --- 데이터 처리 로직 (카고3 불변) ---
             target_cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
@@ -138,8 +142,8 @@ with tab1:
                 # 매칭 로직
                 info = item_dict.get(h_no_raw)
                 if info:
-                    if info["desc"] and info["desc"].lower() != "nan": lines.append(info["desc"])
-                    if info["hs"] and info["hs"].lower() != "nan": lines.append(info["hs"])
+                    if info["desc"]: lines.append(info["desc"])
+                    if info["hs"]: lines.append(info["hs"])
                 lines.append("")
             
             result = "\n".join(lines)
