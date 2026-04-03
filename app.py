@@ -18,13 +18,15 @@ def format_number(v):
         return t.rstrip('0').rstrip('.') if '.' in t else t
     except: return str(v)
 
-# [불변] 한국 시간(KST) 강제 설정 로직
+# [수정] 중복 방지 제거 -> 파일 업로드 시마다 무조건 기록
 def log_uploaded_filename(fn, category="SR"):
     p = "upload_log.txt"
     kst = timezone(timedelta(hours=9))
     now = datetime.now(kst).strftime("%Y-%m-%d %H:%M:%S")
     entry = f"[{now}] ({category}) {fn}\n"
-    with open(p, "a", encoding='utf-8') as f: f.write(entry)
+    # 파일에 즉시 추가 기록
+    with open(p, "a", encoding='utf-8') as f:
+        f.write(entry)
 
 # --- 2. 페이지 설정 ---
 st.set_page_config(page_title="Europe Docs tool", layout="wide")
@@ -46,11 +48,12 @@ with tab1:
     if sr_file:
         col_res = st.columns([1, 2.5])[1]
         try:
+            # 파일이 존재하면 무조건 로그 함수 실행
             log_uploaded_filename(sr_file.name, "SR")
             sr_df = pd.read_excel(sr_file)
             item_dict = {}; empty_line_bls = [] 
             if item_file:
-                # [순정] 헤더 위치 고정
+                log_uploaded_filename(item_file.name, "ITEM")
                 item_df = pd.read_excel(item_file, header=1)
                 item_df.columns = [str(c).strip() for c in item_df.columns]
                 if "House B/L No" in item_df.columns and "품목" in item_df.columns:
