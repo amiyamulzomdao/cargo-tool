@@ -10,7 +10,7 @@ try:
 except ImportError:
     pass
 
-# --- 1. 유틸리티 함수 (카고 표준 및 디자인 유지) ---
+# --- 1. 유틸리티 함수 (카고4 불변 원칙 - 디자인/폰트 고정) ---
 def format_unit(unit, count, force_to_pkg=False):
     u_str = str(unit).upper() if pd.notna(unit) else "PKG"
     m = {'PK':'PKG', 'PL':'PLT', 'CT':'CTN'}
@@ -32,14 +32,14 @@ def log_uploaded_filename(fn, category="SR"):
     entry = f"[{now}] ({category}) {fn}\n"
     with open(p, "a", encoding='utf-8') as f: f.write(entry)
 
-# --- 2. 데이터 분석 엔진 ---
+# --- 2. 데이터 분석 엔진 (컨테이너별 TOTAL 데이터 추출) ---
 def parse_sr_txt(txt_content):
     data = {
         "total_pkg": 0, "total_wgt": "0", "total_msr": "0", 
         "containers_data": [], "hbl_list": []
     }
     
-    # 1. 그랜드 토탈 추출
+    # 1. 전체 그랜드 토탈 추출
     pkg_match = re.search(r"TOTAL:\s*(\d+)\s*PKGS", txt_content)
     wgt_match = re.search(r"/\s*([\d.]+)\s*KGS", txt_content)
     msr_match = re.search(r"/\s*([\d.]+)\s*CBM", txt_content)
@@ -47,15 +47,14 @@ def parse_sr_txt(txt_content):
     if wgt_match: data["total_wgt"] = wgt_match.group(1)
     if msr_match: data["total_msr"] = msr_match.group(1)
     
-    # 2. 컨테이너별 소계 추출 (순서대로)
-    # 예: ONEU9217230 / KRAX66090 \n TOTAL: 67 PKGS / 7281.8 KGS / 49.172 CBM
+    # 2. 컨테이너별 TOTAL 정보 추출
     cntr_blocks = re.findall(r"([A-Z]{4}\d{7})\s*/\s*([A-Z0-9]+)\nTOTAL:\s*(\d+)\s*PKGS\s*/\s*([\d.]+)\s*KGS\s*/\s*([\d.]+)\s*CBM", txt_content)
     for c, s, p, w, m in cntr_blocks:
         data["containers_data"].append({
             "no": c, "seal": s, "pkg": p, "wgt": format_number(w), "msr": format_number(m)
         })
         
-    # 3. HBL 상세 추출
+    # 3. HBL 상세 데이터 추출
     if "<DESCRIPTION>" in txt_content:
         desc_part = txt_content.split("<DESCRIPTION>")[-1]
         hbl_blocks = re.findall(r"([A-Z0-9]{8,16})\n(\d+)\s*\w+\s*/\s*([\d.]+)\s*KGS\s*/\s*([\d.]+)\s*CBM", desc_part)
@@ -74,7 +73,7 @@ st.title("🚢 Europe Docs tool")
 
 tab1, tab2, tab3 = st.tabs(["SR 정리", "MBL 검수", "업로드 기록"])
 
-# --- TAB 1: SR 정리 (오리지널 순정 레이아웃) ---
+# --- TAB 1: SR 정리 ---
 with tab1:
     col_up1, col_up2 = st.columns(2)
     with col_up1:
@@ -152,7 +151,7 @@ with tab1:
                 st.text_area("결과창", result, height=800, label_visibility="collapsed")
         except Exception as e: st.error(f"오류 발생: {e}")
 
-# --- TAB 2: MBL 검수 (컨테이너 소계 검수 로직 추가) ---
+# --- TAB 2: MBL 검수 (컨테이너별 TOTAL 검증) ---
 with tab2:
     col1, col2 = st.columns(2)
     with col1:
@@ -177,38 +176,34 @@ with tab2:
                 
                 errors = []
                 
-                # [1] 전체 총계(그랜드 토탈) 검사
-                if str(sr["total_pkg"]) not in full_text: errors.append(f"❌ 전체 총 수량 불일치: {sr['total_pkg']} PKGS")
-                if sr["total_wgt"] not in full_text: errors.append(f"❌ 전체 총 중량 불일치: {sr['total_wgt']} KGS")
-                if sr["total_msr"] not in full_text: errors.append(f"❌ 전체 총 부피 불일치: {sr['total_msr']} CBM")
+                # [1] 전체 그랜드 TOTAL 검사
+                if str(sr["total_pkg"]) not in full_text: errors.append(f"❌ 전체 TOTAL 수량 불일치: {sr['total_pkg']} PKGS")
+                if sr["total_wgt"] not in full_text: errors.append(f"❌ 전체 TOTAL 중량 불일치: {sr['total_wgt']} KGS")
+                if sr["total_msr"] not in full_text: errors.append(f"❌ 전체 TOTAL 부피 불일치: {sr['total_msr']} CBM")
                 
-                # [2] 컨테이너별 정보 및 소계 검사 (중요 업데이트)
+                # [2] 컨테이너별 TOTAL 정보 검사
                 for c_data in sr["containers_data"]:
                     c_no = c_data["no"]
-                    # 컨테이너 번호 및 씰 확인
                     if c_no not in full_text: errors.append(f"❌ 컨테이너 번호 누락/오류: {c_no}")
                     if c_data["seal"].upper() not in full_text: errors.append(f"❌ Seal 번호 누락/오류 ({c_no}): {c_data['seal']}")
                     
-                    # 컨테이너별 소계(PKG, KGS, CBM) 대조
-                    # 컨테이너 번호 근처 텍스트에서 소계를 찾도록 검증 범위 강화
                     c_pos = full_text.find(c_no)
                     context = full_text[c_pos:c_pos+1000] if c_pos != -1 else full_text
                     
                     if str(c_data["pkg"]) not in context:
-                        errors.append(f"❌ 소계 수량 불일치 (CNTR: {c_no}): {c_data['pkg']} PKGS")
+                        errors.append(f"❌ 컨테이너 TOTAL 수량 불일치 (CNTR: {c_no}): {c_data['pkg']} PKGS")
                     if c_data["wgt"] not in context:
-                        errors.append(f"❌ 소계 중량 불일치 (CNTR: {c_no}): {c_data['wgt']} KGS")
+                        errors.append(f"❌ 컨테이너 TOTAL 중량 불일치 (CNTR: {c_no}): {c_data['wgt']} KGS")
                     if c_data["msr"] not in context:
-                        errors.append(f"❌ 소계 부피 불일치 (CNTR: {c_no}): {c_data['msr']} CBM")
+                        errors.append(f"❌ 컨테이너 TOTAL 부피 불일치 (CNTR: {c_no}): {c_data['msr']} CBM")
 
-                # [3] 개별 HBL 상세 검사
+                # [3] HBL별 상세 검사
                 for item in sr["hbl_list"]:
                     h_no = item["hbl"]
                     if h_no not in full_text:
                         errors.append(f"❌ B/L 번호 찾을 수 없음: {h_no}")
                         continue
                     
-                    # HBL별 수치 체크
                     if item["wgt"] not in full_text: errors.append(f"❌ 중량 불일치 (HBL: {h_no}): {item['wgt']} KGS")
                     if item["msr"] not in full_text: errors.append(f"❌ 부피 불일치 (HBL: {h_no}): {item['msr']} CBM (확인 요망)")
                     if item["hs"] and item["hs"] not in full_text: errors.append(f"❌ HS CODE 불일치 (HBL: {h_no}): {item['hs']}")
