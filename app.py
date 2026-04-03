@@ -32,7 +32,7 @@ def log_uploaded_filename(fn, category="SR"):
     entry = f"[{now}] ({category}) {fn}\n"
     with open(p, "a", encoding='utf-8') as f: f.write(entry)
 
-# --- 2. 메모장 분석 엔진 (복붙/파일 공용) ---
+# --- 2. 메모장 분석 엔진 ---
 def parse_sr_txt(txt_content):
     data = {"containers": [], "seals": [], "hbl_list": [], "total_pkg": 0, "total_wgt": "0"}
     pkg_match = re.search(r"TOTAL:\s*(\d+)\s*PKGS", txt_content)
@@ -59,7 +59,7 @@ st.title("🚢 Europe Docs tool")
 
 tab1, tab2, tab3 = st.tabs(["SR 정리", "MBL 검수", "업로드 기록"])
 
-# --- TAB 1: SR 정리 (기존 오리지널 레이아웃) ---
+# --- TAB 1: SR 정리 (기존 스타일 유지) ---
 with tab1:
     col_up1, col_up2 = st.columns(2)
     with col_up1:
@@ -137,22 +137,21 @@ with tab1:
                 st.text_area("결과창", result, height=800, label_visibility="collapsed")
         except Exception as e: st.error(f"오류 발생: {e}")
 
-# --- TAB 2: MBL 검수 (복붙 기능 추가) ---
+# --- TAB 2: MBL 검수 (디자인 통일) ---
 with tab2:
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("**메모장 정보 입력**")
-        input_mode = st.radio("방식", ["복사 붙여넣기", "파일 업로드"], horizontal=True, label_visibility="collapsed")
+        # SR 정리 탭과 동일한 번호 매기기 스타일 적용
+        input_mode = st.radio("1. 메모장 정보 입력 방식 선택", ["복사 붙여넣기", "파일 업로드"], horizontal=True)
         memo_content = ""
         if input_mode == "복사 붙여넣기":
-            memo_content = st.text_area("메모장 내용을 여기에 붙여넣으세요.", height=200)
+            memo_content = st.text_area("메모장 내용을 붙여넣으세요.", height=250, placeholder="[GRAND TOTAL] 또는 TOTAL: 라인부터...")
         else:
-            m_file = st.file_uploader("메모장 업로드 (.txt)", type=["txt"])
+            m_file = st.file_uploader("메모장 파일 업로드 (.txt)", type=["txt"])
             if m_file: memo_content = m_file.read().decode("utf-8")
             
     with col2:
-        st.markdown("**선사 DRAFT BL 업로드**")
-        draft_pdf = st.file_uploader("PDF 업로드", type=["pdf"], label_visibility="collapsed")
+        draft_pdf = st.file_uploader("2. 선사 DRAFT BL 업로드 (.pdf)", type=["pdf"])
     
     if memo_content and draft_pdf:
         try:
