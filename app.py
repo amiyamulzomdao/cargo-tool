@@ -32,11 +32,11 @@ def log_uploaded_filename(fn, category="SR"):
     entry = f"[{now}] ({category}) {fn}\n"
     with open(p, "a", encoding='utf-8') as f: f.write(entry)
 
-# --- 2. 메모장 분석 엔진 (HBL별 상세 수치 추출) ---
+# --- 2. 메모장 분석 엔진 (HBL별 수치 상세 추출) ---
 def parse_sr_txt(txt_content):
     data = {"containers": [], "seals": [], "hbl_list": [], "total_pkg": 0, "total_wgt": "0", "total_msr": "0"}
     
-    # 총계 추출
+    # 1. 총계 추출
     pkg_match = re.search(r"TOTAL:\s*(\d+)\s*PKGS", txt_content)
     wgt_match = re.search(r"/\s*([\d.]+)\s*KGS", txt_content)
     msr_match = re.search(r"/\s*([\d.]+)\s*CBM", txt_content)
@@ -44,15 +44,14 @@ def parse_sr_txt(txt_content):
     if wgt_match: data["total_wgt"] = wgt_match.group(1)
     if msr_match: data["total_msr"] = msr_match.group(1)
     
-    # 컨테이너/씰 추출
+    # 2. 컨테이너/씰 추출
     cntr_matches = re.findall(r"([A-Z]{4}\d{7})\s*/\s*([A-Z0-9]+)", txt_content)
     for c, s in cntr_matches:
         data["containers"].append(c); data["seals"].append(s)
         
-    # HBL 상세 데이터 추출
+    # 3. HBL 상세 추출
     if "<DESCRIPTION>" in txt_content:
         desc_part = txt_content.split("<DESCRIPTION>")[-1]
-        # HBL번호, 수량, 중량, 부피 순서
         hbl_blocks = re.findall(r"([A-Z0-9]{8,16})\n(\d+)\s*\w+\s*/\s*([\d.]+)\s*KGS\s*/\s*([\d.]+)\s*CBM", desc_part)
         for hbl, pkg, wgt, msr in hbl_blocks:
             search_area = desc_part.split(hbl)[-1].split("\n\n")[0]
@@ -69,7 +68,7 @@ st.title("🚢 Europe Docs tool")
 
 tab1, tab2, tab3 = st.tabs(["SR 정리", "MBL 검수", "업로드 기록"])
 
-# --- TAB 1: SR 정리 ---
+# --- TAB 1: SR 정리 (생략 - 기존과 동일) ---
 with tab1:
     col_up1, col_up2 = st.columns(2)
     with col_up1:
@@ -146,7 +145,7 @@ with tab1:
                 st.text_area("결과창", result, height=800, label_visibility="collapsed")
         except Exception as e: st.error(f"오류 발생: {e}")
 
-# --- TAB 2: MBL 검수 (요청사항 반영) ---
+# --- TAB 2: MBL 검수 (HBL별 부피 추적 강화) ---
 with tab2:
     col1, col2 = st.columns(2)
     with col1:
@@ -161,7 +160,6 @@ with tab2:
     with col2:
         draft_pdf = st.file_uploader("2. 선사 DRAFT BL 업로드 (.pdf)", type=["pdf"], key="d_up")
         
-        # [레이아웃 최적화] PDF 업로드 칸 바로 아래에 검수 결과 노출
         if memo_content and draft_pdf:
             try:
                 sr = parse_sr_txt(memo_content)
@@ -169,11 +167,12 @@ with tab2:
                     full_text = " ".join([p.extract_text().upper() for p in pdf.pages])
                 
                 errors = []
-                
                 # [1] 총계 검사
                 if str(sr["total_pkg"]) not in full_text: errors.append(f"❌ 총 수량 불일치: {sr['total_pkg']} PKGS")
                 if sr["total_wgt"] not in full_text: errors.append(f"❌ 총 중량 불일치: {sr['total_wgt']} KGS")
-                if sr["total_msr"] not in full_text: errors.append(f"❌ 총 부피 불일치: {sr['total_msr']} CBM")
+                # 총 부피 불일치 시 안내 강화
+                if sr["total_msr"] not in full_text:
+                    errors.append(f"❌ **총 부피 불일치**: SR합계({sr['total_msr']} CBM)가 PDF에 없음. 아래 HBL별 수치를 확인하세요.")
                 
                 # [2] 컨테이너/씰 검사
                 for c in set(sr["containers"]):
@@ -181,30 +180,31 @@ with tab2:
                 for s in set(sr["seals"]):
                     if s and s.upper() not in full_text: errors.append(f"❌ Seal 번호 누락/오류: {s}")
                 
-                # [3] HBL별 정밀 상세 검사 (HBL 번호 명시)
+                # [3] HBL별 정밀 검사 (부피/중량/HS 집중 타격)
                 for item in sr["hbl_list"]:
                     h_no = item["hbl"]
                     if h_no not in full_text:
                         errors.append(f"❌ B/L 번호 찾을 수 없음: {h_no}")
                         continue
                     
-                    # 중량/부피 정밀 체크
-                    if item["wgt"] not in full_text:
-                        errors.append(f"❌ 중량 불일치 (HBL: {h_no}): {item['wgt']} KGS")
+                    # 부피 불일치 안내 (HBL 번호 포함)
                     if item["msr"] not in full_text:
-                        errors.append(f"❌ 부피 불일치 (HBL: {h_no}): {item['msr']} CBM (확인 요망)")
+                        errors.append(f"❌ **부피 불일치 (HBL: {h_no})**: SR({item['msr']} CBM)와 선사 데이터가 다름")
+                    
+                    # 중량 불일치 안내 (HBL 번호 포함)
+                    if item["wgt"] not in full_text:
+                        errors.append(f"❌ **중량 불일치 (HBL: {h_no})**: SR({item['wgt']} KGS)와 선사 데이터가 다름")
                     
                     # HS CODE 체크
                     if item["hs"] and item["hs"] not in full_text:
-                        errors.append(f"❌ HS CODE 불일치 (HBL: {h_no}): {item['hs']}")
+                        errors.append(f"❌ **HS CODE 불일치 (HBL: {h_no})**: {item['hs']}")
 
                 st.markdown("---")
                 if not errors:
                     st.success("✅ 불일치 항목 없음 (데이터 일치)")
                 else:
                     st.warning(f"⚠️ 총 {len(errors)}건의 불일치가 발견되었습니다.")
-                    # [촘촘한 출력] 폰트 크기를 살짝 줄이고 간격을 좁게 표시
-                    err_html = "".join([f"<li style='font-size:14px; margin-bottom:2px;'>{e}</li>" for e in errors])
+                    err_html = "".join([f"<li style='font-size:14.5px; margin-bottom:3px; color:#D32F2F;'>{e}</li>" for e in errors])
                     st.markdown(f"<ul style='list-style-type:none; padding-left:0;'>{err_html}</ul>", unsafe_allow_html=True)
             except Exception as e:
                 st.error(f"오류 발생: {e}")
