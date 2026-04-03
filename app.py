@@ -32,15 +32,18 @@ def log_uploaded_filename(fn, category="SR"):
     entry = f"[{now}] ({category}) {fn}\n"
     with open(p, "a", encoding='utf-8') as f: f.write(entry)
 
+# --- 2. 메모장 분석 엔진 (복붙/파일 공용) ---
 def parse_sr_txt(txt_content):
     data = {"containers": [], "seals": [], "hbl_list": [], "total_pkg": 0, "total_wgt": "0"}
     pkg_match = re.search(r"TOTAL:\s*(\d+)\s*PKGS", txt_content)
     wgt_match = re.search(r"/\s*([\d.]+)\s*KGS", txt_content)
     if pkg_match: data["total_pkg"] = int(pkg_match.group(1))
     if wgt_match: data["total_wgt"] = wgt_match.group(1)
+    
     cntr_matches = re.findall(r"([A-Z]{4}\d{7})\s*/\s*([A-Z0-9]+)", txt_content)
     for c, s in cntr_matches:
         data["containers"].append(c); data["seals"].append(s)
+        
     if "<DESCRIPTION>" in txt_content:
         desc_part = txt_content.split("<DESCRIPTION>")[-1]
         hbl_blocks = re.findall(r"([A-Z0-9]{8,16})\n(\d+)\s*\w+\s*/\s*([\d.]+)\s*KGS", desc_part)
@@ -50,7 +53,7 @@ def parse_sr_txt(txt_content):
             data["hbl_list"].append({"hbl": hbl, "hs": hs_match.group(1) if hs_match else "", "wgt": wgt})
     return data
 
-# --- 2. 페이지 설정 ---
+# --- 3. 페이지 설정 ---
 st.set_page_config(page_title="Europe Docs tool", layout="wide")
 st.title("🚢 Europe Docs tool")
 
@@ -64,7 +67,7 @@ with tab1:
         force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환", value=False)
         mark_spacing = st.checkbox("MARK 란 간격 띄우기", value=False)
     with col_up2:
-        item_file = st.file_uploader("2. 하우스리스트 -> S/R NO 검색 -> 엑셀내려받기 파일 입력(품목명, HS CODE 입력 가능)_선택사항", type=["xlsx"], key="item_sub")
+        item_file = st.file_uploader("2. 하우스리스트 -> S/R NO 검색 -> 엑셀내려받기 파일 입력", type=["xlsx"], key="item_sub")
 
     st.divider()
 
@@ -73,32 +76,25 @@ with tab1:
         try:
             log_uploaded_filename(sr_file.name, "SR")
             sr_df = pd.read_excel(sr_file)
-            item_dict = {}; empty_line_bls = [] 
+            item_dict = {}
             if item_file:
-                log_uploaded_filename(item_file.name, "ITEM")
                 item_df = pd.read_excel(item_file, header=1)
                 item_df.columns = [str(c).strip() for c in item_df.columns]
-                if "House B/L No" in item_df.columns and "품목" in item_df.columns:
-                    for _, row in item_df.iterrows():
-                        h_no = str(row["House B/L No"]).strip()
-                        desc_val = str(row["품목"]).strip() if pd.notna(row["품목"]) else ""
-                        hs_val = str(row.get("HS CODE", "")).strip() if pd.notna(row.get("HS CODE", "")) else ""
-                        if h_no and h_no != "nan":
-                            item_dict[h_no] = {"desc": desc_val, "hs": hs_val}
-                            if "\n\n" in desc_val: empty_line_bls.append(h_no)
+                for _, row in item_df.iterrows():
+                    h_no = str(row["House B/L No"]).strip()
+                    if h_no and h_no != "nan":
+                        item_dict[h_no] = {"desc": str(row["품목"]).strip(), "hs": str(row.get("HS CODE", "")).strip()}
 
             cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
             df = sr_df[cols].copy().dropna(subset=['House B/L No'])
             df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
-            df['단위'] = df['단위'].fillna('PKG')
             
             total = df.groupby(['컨테이너 번호', 'Seal#1']).agg(포장갯수=('포장갯수','sum'), Weight=('Weight','sum'), Measure=('Measure','sum')).reset_index()
             marks = df.groupby(['컨테이너 번호', 'Seal#1'])['House B/L No'].unique().reset_index()
             desc_df = df.sort_values(['컨테이너 번호', 'Seal#1', 'House B/L No'])
             
             lines = []
-            num_containers = len(total)
-            if num_containers > 1:
+            if len(total) > 1:
                 g_p = int(total['포장갯수'].sum())
                 total_line = f"TOTAL: {g_p} PKGS / {format_number(total['Weight'].sum())} KGS / {format_number(total['Measure'].sum())} CBM"
                 lines.extend(["[GRAND TOTAL]", total_line, "-" * (len(total_line) + 10)]) 
@@ -114,8 +110,8 @@ with tab1:
                 lines.append("") 
                 for hbl in sorted(r['House B/L No']):
                     lines.append(hbl)
-                    if num_containers <= 4 and mark_spacing: lines.append("") 
-                if not (num_containers <= 4 and mark_spacing): lines.append("") 
+                    if len(total) <= 4 and mark_spacing: lines.append("") 
+                if not (len(total) <= 4 and mark_spacing): lines.append("") 
             
             lines.extend(["", "<DESCRIPTION>", ""]) 
             prev = (None, None)
@@ -137,20 +133,30 @@ with tab1:
             result = "\n".join(lines)
             with col_res:
                 st.subheader("정리 결과")
-                if empty_line_bls: st.warning(f"📢 **다중 품목 의심 B/L:** {', '.join(list(set(empty_line_bls)))} -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
                 st.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt")
                 st.text_area("결과창", result, height=800, label_visibility="collapsed")
         except Exception as e: st.error(f"오류 발생: {e}")
 
-# --- TAB 2: MBL 검수 ---
+# --- TAB 2: MBL 검수 (복붙 기능 추가) ---
 with tab2:
     col1, col2 = st.columns(2)
-    with col1: memo_file = st.file_uploader("메모장 업로드 (.txt)", type=["txt"], key="m_up")
-    with col2: draft_pdf = st.file_uploader("선사 DRAFT BL 업로드 (.pdf)", type=["pdf"], key="d_up")
+    with col1:
+        st.markdown("**메모장 정보 입력**")
+        input_mode = st.radio("방식", ["복사 붙여넣기", "파일 업로드"], horizontal=True, label_visibility="collapsed")
+        memo_content = ""
+        if input_mode == "복사 붙여넣기":
+            memo_content = st.text_area("메모장 내용을 여기에 붙여넣으세요.", height=200)
+        else:
+            m_file = st.file_uploader("메모장 업로드 (.txt)", type=["txt"])
+            if m_file: memo_content = m_file.read().decode("utf-8")
+            
+    with col2:
+        st.markdown("**선사 DRAFT BL 업로드**")
+        draft_pdf = st.file_uploader("PDF 업로드", type=["pdf"], label_visibility="collapsed")
     
-    if memo_file and draft_pdf:
+    if memo_content and draft_pdf:
         try:
-            sr = parse_sr_txt(memo_file.read().decode("utf-8"))
+            sr = parse_sr_txt(memo_content)
             with pdfplumber.open(draft_pdf) as pdf:
                 pdf_text = "".join([p.extract_text() for p in pdf.pages]).upper()
             
@@ -158,9 +164,9 @@ with tab2:
             if str(sr["total_pkg"]) not in pdf_text: errors.append(f"❌ 총 수량 불일치: {sr['total_pkg']} PKGS")
             if sr["total_wgt"] not in pdf_text: errors.append(f"❌ 총 중량 불일치: {sr['total_wgt']} KGS")
             for c in set(sr["containers"]):
-                if c.upper() not in pdf_text: errors.append(f"❌ 컨테이너 번호 누락/오류: {c}")
+                if c.upper() not in pdf_text: errors.append(f"❌ 컨테이너 번호 누락: {c}")
             for s in set(sr["seals"]):
-                if s and s.upper() not in pdf_text: errors.append(f"❌ Seal 번호 누락/오류: {s}")
+                if s and s.upper() not in pdf_text: errors.append(f"❌ Seal 번호 누락: {s}")
             for item in sr["hbl_list"]:
                 if item["hs"] and item["hs"] not in pdf_text: errors.append(f"❌ HS CODE 불일치 ({item['hbl']}): {item['hs']}")
                 if item["wgt"] not in pdf_text: errors.append(f"❌ 중량 불일치 ({item['hbl']}): {item['wgt']} KGS")
