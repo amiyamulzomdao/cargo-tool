@@ -18,7 +18,6 @@ def format_number(v):
         return t.rstrip('0').rstrip('.') if '.' in t else t
     except: return str(v)
 
-# [불변] 중복 로그 방지 + 한국 시간(KST) 고정
 def log_uploaded_filename(fn, category="SR"):
     log_key = f"logged_{fn}_{category}"
     if log_key not in st.session_state:
@@ -56,18 +55,23 @@ with tab1:
             item_dict = {}; empty_line_bls = [] 
             if item_file:
                 log_uploaded_filename(item_file.name, "ITEM")
-                # 품목 파일 인식 개선 (헤더 0번 고정)
                 item_df = pd.read_excel(item_file)
                 
-                for _, row in item_df.iterrows():
-                    # 사용자 제공 파일 컬럼명 매칭 (H B/L No, Description, HS Code)
-                    h_no = str(row.get("H B/L No", row.get("House B/L No", ""))).strip()
-                    desc_val = str(row.get("Description", row.get("품목", ""))).strip() if pd.notna(row.get("Description", row.get("품목"))) else ""
-                    hs_val = str(row.get("HS Code", row.get("HS CODE", ""))).strip() if pd.notna(row.get("HS Code", row.get("HS CODE"))) else ""
-                    
-                    if h_no and h_no.lower() != "nan":
-                        item_dict[h_no] = {"desc": desc_val, "hs": hs_val}
-                        if "\n\n" in desc_val: empty_line_bls.append(h_no)
+                # [핵심 수정] 컬럼명에서 'House B/L No'와 '품목'이 포함된 열을 자동으로 찾음
+                col_list = item_df.columns.tolist()
+                bl_col = next((c for c in col_list if "House B/L No" in str(c) or "H B/L No" in str(c)), None)
+                desc_col = next((c for c in col_list if "품목" in str(c) or "Description" in str(c)), None)
+                hs_col = next((c for c in col_list if "HS Code" in str(c) or "HS CODE" in str(c)), None)
+                
+                if bl_col and desc_col:
+                    for _, row in item_df.iterrows():
+                        h_no = str(row[bl_col]).strip()
+                        desc_val = str(row[desc_col]).strip() if pd.notna(row[desc_col]) else ""
+                        hs_val = str(row[hs_col]).strip() if hs_col and pd.notna(row[hs_col]) else ""
+                        
+                        if h_no and h_no.lower() != "nan":
+                            item_dict[h_no] = {"desc": desc_val, "hs": hs_val}
+                            if "\n\n" in desc_val: empty_line_bls.append(h_no)
 
             # --- 데이터 처리 로직 (카고3 불변) ---
             target_cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
@@ -82,7 +86,6 @@ with tab1:
             lines = []
             num_containers = len(total)
             
-            # --- 상단 TOTAL 영역 ---
             if num_containers > 1:
                 g_p = int(total['포장갯수'].sum())
                 total_line = f"TOTAL: {g_p} PKGS / {format_number(total['Weight'].sum())} KGS / {format_number(total['Measure'].sum())} CBM"
@@ -92,7 +95,6 @@ with tab1:
                 lines.append(""); lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
                 lines.append(f"TOTAL: {int(r['포장갯수'])} PKGS / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
             
-            # --- MARK 영역 (이미지 간격 반영) ---
             lines.extend(["", "", "<MARK>", ""]) 
             for i, r in marks.iterrows():
                 if i > 0: lines.append("") 
@@ -103,7 +105,6 @@ with tab1:
                     if num_containers <= 4 and mark_spacing: lines.append("")
                 if not (num_containers <= 4 and mark_spacing): lines.append("") 
             
-            # --- DESCRIPTION 영역 (컨/씰 상시 표시) ---
             lines.extend(["", "<DESCRIPTION>", ""]) 
             prev = (None, None)
             for _, r in desc_df.iterrows():
