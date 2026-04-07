@@ -70,6 +70,8 @@ with tab1:
             sr_df = pd.read_excel(sr_file)
             item_dict = {}
             if item_file:
+                # ITEM 파일 업로드 시 로그 기록 추가
+                log_uploaded_filename(item_file.name, "ITEM")
                 item_df = pd.read_excel(item_file, header=1)
                 item_df.columns = [str(c).strip() for c in item_df.columns]
                 for _, row in item_df.iterrows():
@@ -132,7 +134,6 @@ with tab1:
 
 # --- TAB 2: TEST중 ---
 with tab2:
-    # 세련된 커스텀 안내창
     st.markdown('<div class="test-box">🛠️ (TEST중) 본 기능은 내부 테스트 중입니다.</div>', unsafe_allow_html=True)
     
     if "admin_authenticated" not in st.session_state:
