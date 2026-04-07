@@ -10,7 +10,7 @@ try:
 except ImportError:
     pass
 
-# --- 1. 유틸리티 함수 (카고4 불변 원칙 - 디자인/폰트 고정) ---
+# --- 1. 유틸리티 함수 (카고4 불변 원칙) ---
 def format_unit(unit, count, force_to_pkg=False):
     u_str = str(unit).upper() if pd.notna(unit) else "PKG"
     m = {'PK':'PKG', 'PL':'PLT', 'CT':'CTN'}
@@ -34,11 +34,25 @@ def log_uploaded_filename(fn, category="SR"):
 
 # --- 2. 페이지 설정 ---
 st.set_page_config(page_title="Europe Docs tool", layout="wide")
+st.markdown("""
+    <style>
+    .test-box {
+        padding: 20px;
+        background-color: #f8f9fa;
+        border-left: 5px solid #007bff;
+        border-radius: 5px;
+        margin-bottom: 20px;
+        color: #343a40;
+        font-weight: 500;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 st.title("🚢 Europe Docs tool")
 
-tab1, tab2, tab3 = st.tabs(["SR 정리", "MBL 검수 (준비중)", "업로드 기록"])
+tab1, tab2, tab3 = st.tabs(["SR 정리", "TEST중", "업로드 기록"])
 
-# --- TAB 1: SR 정리 (기존 레이아웃 유지) ---
+# --- TAB 1: SR 정리 ---
 with tab1:
     col_up1, col_up2 = st.columns(2)
     with col_up1:
@@ -116,30 +130,27 @@ with tab1:
                 st.text_area("결과창", result, height=800, label_visibility="collapsed")
         except Exception as e: st.error(f"오류 발생: {e}")
 
-# --- TAB 2: MBL 검수 (관리자 잠금 로직) ---
+# --- TAB 2: TEST중 ---
 with tab2:
-    st.warning("🚧 본 기능은 현재 개발 및 테스트 중입니다. 관리자 외 사용을 금합니다.")
+    # 세련된 커스텀 안내창
+    st.markdown('<div class="test-box">🛠️ (TEST중) 본 기능은 내부 테스트 중입니다.</div>', unsafe_allow_html=True)
     
-    # 세션 상태로 인증 여부 관리
     if "admin_authenticated" not in st.session_state:
         st.session_state.admin_authenticated = False
 
     if not st.session_state.admin_authenticated:
-        # 비밀번호 입력 폼
-        with st.container():
-            col_pw1, col_pw2 = st.columns([1, 2])
-            with col_pw1:
-                password = st.text_input("관리자 비밀번호를 입력하세요", type="password")
-                if st.button("인증하기"):
-                    if password == "1234":  # <--- 여기에 원하시는 비밀번호를 설정하세요
-                        st.session_state.admin_authenticated = True
-                        st.rerun()
-                    else:
-                        st.error("❌ 비밀번호가 틀렸습니다.")
+        col_pw1, col_pw2 = st.columns([1, 2.5])
+        with col_pw1:
+            password = st.text_input("Admin Password", type="password", placeholder="비밀번호 입력")
+            if st.button("Access"):
+                if password == "1234":
+                    st.session_state.admin_authenticated = True
+                    st.rerun()
+                else:
+                    st.error("Invalid Password")
     else:
-        # 인증 성공 시 보이는 실제 검수 화면
-        st.success("🔓 관리자 인증 성공. 테스트를 진행할 수 있습니다.")
-        if st.button("로그아웃 (다시 잠금)"):
+        st.info("🔓 Admin 모드가 활성화되었습니다.")
+        if st.button("잠금"):
             st.session_state.admin_authenticated = False
             st.rerun()
             
@@ -148,7 +159,6 @@ with tab2:
         with col1:
             st.markdown("**1. SR 엑셀 데이터 입력**")
             m_file = st.file_uploader("정리 전 SR 엑셀 업로드", type=["xlsx"], key="mbl_sr_up")
-                
         with col2:
             st.markdown("**2. 선사 DRAFT BL 업로드**")
             draft_pdf = st.file_uploader("PDF 파일 업로드 (.pdf)", type=["pdf"], key="d_up", label_visibility="collapsed")
@@ -157,13 +167,10 @@ with tab2:
                 try:
                     sr_df_check = pd.read_excel(m_file)
                     sr_df_check['Seal#1'] = sr_df_check['Seal#1'].fillna('').astype(str).str.split('.').str[0]
-                    
                     with pdfplumber.open(draft_pdf) as pdf:
                         full_text = " ".join([p.extract_text().upper() for p in pdf.pages])
                     
                     errors = []
-                    
-                    # [1] 전체 그랜드 TOTAL 검사
                     t_pkg = int(sr_df_check['포장갯수'].sum())
                     t_wgt = format_number(sr_df_check['Weight'].sum())
                     t_msr = format_number(sr_df_check['Measure'].sum())
@@ -172,28 +179,20 @@ with tab2:
                     if t_wgt not in full_text: errors.append(f"❌ 전체 TOTAL 중량 불일치: {t_wgt} KGS")
                     if t_msr not in full_text: errors.append(f"❌ 전체 TOTAL CBM 불일치: {t_msr} CBM")
                     
-                    # [2] TOTAL CNTR 검증
                     total_cntr = sr_df_check.groupby(['컨테이너 번호', 'Seal#1']).agg({'포장갯수':'sum', 'Weight':'sum', 'Measure':'sum'}).reset_index()
                     for _, c_row in total_cntr.iterrows():
                         c_no = str(c_row['컨테이너 번호']).strip()
-                        c_seal = str(c_row['Seal#1']).strip()
-                        c_pkg = int(c_row['포장갯수'])
-                        c_wgt = format_number(c_row['Weight'])
-                        c_msr = format_number(c_row['Measure'])
-                        
+                        c_pkg, c_wgt, c_msr = int(c_row['포장갯수']), format_number(c_row['Weight']), format_number(c_row['Measure'])
                         if c_no not in full_text: errors.append(f"❌ 컨테이너 번호 누락/오류: {c_no}")
                         c_pos = full_text.find(c_no)
                         context = full_text[c_pos:c_pos+1200] if c_pos != -1 else full_text
-                        
                         if str(c_pkg) not in context: errors.append(f"❌ TOTAL CNTR 수량 불일치 (CNTR: {c_no}): {c_pkg} PKGS")
                         if c_wgt not in context: errors.append(f"❌ TOTAL CNTR 중량 불일치 (CNTR: {c_no}): {c_wgt} KGS")
                         if c_msr not in context: errors.append(f"❌ TOTAL CNTR CBM 불일치 (CNTR: {c_no}): {c_msr} CBM")
 
-                    # [3] 개별 HBL 상세 검사
                     for _, h_row in sr_df_check.iterrows():
                         h_no = str(h_row['House B/L No']).strip()
-                        h_wgt = format_number(h_row['Weight'])
-                        h_msr = format_number(h_row['Measure'])
+                        h_wgt, h_msr = format_number(h_row['Weight']), format_number(h_row['Measure'])
                         if h_no not in full_text:
                             errors.append(f"❌ B/L 번호 찾을 수 없음: {h_no}")
                             continue
@@ -205,7 +204,7 @@ with tab2:
                     st.markdown("---")
                     if not errors: st.success("✅ 모든 데이터가 정확히 일치합니다.")
                     else:
-                        st.warning(f"⚠️ 총 {len(errors)}건의 불일치가 발견되었습니다.")
+                        st.warning(f"⚠️ 총 {len(errors)}건의 불일치 발견")
                         err_html = "".join([f"<li style='font-size:14px; margin-bottom:2px;'>{e}</li>" for e in errors])
                         st.markdown(f"<ul style='list-style-type:none; padding-left:0;'>{err_html}</ul>", unsafe_allow_html=True)
                 except Exception as e: st.error(f"오류 발생: {e}")
