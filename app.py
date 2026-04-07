@@ -19,12 +19,10 @@ def format_unit(unit, count, force_to_pkg=False):
     return base
 
 def format_number(v):
-    """숫자를 문자열로 변환하되, 입력된 형태 그대로를 최대한 유지 (검사용)"""
     try:
-        s = str(v).strip()
-        if not s: return ""
-        # 콤마 제거 후 숫자만 추출
-        return s.replace(',', '')
+        val = float(str(v).replace(',', ''))
+        t = f"{round(val, 3):.3f}"
+        return t.rstrip('0').rstrip('.') if '.' in t else t
     except: return str(v)
 
 def log_uploaded_filename(fn, category="SR"):
@@ -34,47 +32,11 @@ def log_uploaded_filename(fn, category="SR"):
     entry = f"[{now}] ({category}) {fn}\n"
     with open(p, "a", encoding='utf-8') as f: f.write(entry)
 
-# --- 2. 데이터 분석 엔진 (정밀 검사 로직 강화) ---
-def parse_sr_txt(txt_content):
-    data = {
-        "total_pkg": 0, "total_wgt": "0", "total_msr": "0", 
-        "containers_data": [], "hbl_list": []
-    }
-    
-    # 1. 전체 그랜드 TOTAL 추출
-    pkg_match = re.search(r"TOTAL:\s*(\d+)\s*PKGS", txt_content)
-    wgt_match = re.search(r"/\s*([\d.]+)\s*KGS", txt_content)
-    msr_match = re.search(r"/\s*([\d.]+)\s*CBM", txt_content)
-    if pkg_match: data["total_pkg"] = int(pkg_match.group(1))
-    if wgt_match: data["total_wgt"] = wgt_match.group(1)
-    if msr_match: data["total_msr"] = msr_match.group(1)
-    
-    # 2. 컨테이너별 TOTAL 정보 추출
-    cntr_blocks = re.findall(r"([A-Z]{4}\d{7})\s*/\s*([A-Z0-9]+)\nTOTAL:\s*(\d+)\s*PKGS\s*/\s*([\d.]+)\s*KGS\s*/\s*([\d.]+)\s*CBM", txt_content)
-    for c, s, p, w, m in cntr_blocks:
-        data["containers_data"].append({
-            "no": c, "seal": s, "pkg": p, "wgt": format_number(w), "msr": format_number(m)
-        })
-        
-    # 3. HBL 상세 데이터 추출 (정규식 보강: CBM 앞의 공백 및 소수점 정밀 추출)
-    if "<DESCRIPTION>" in txt_content:
-        desc_part = txt_content.split("<DESCRIPTION>")[-1]
-        # HBL 번호 뒤의 숫자/단위 라인을 더 정밀하게 캡처
-        hbl_blocks = re.findall(r"([A-Z0-9]{8,16})\n(\d+)\s+\w+\s*/\s*([\d.]+)\s*KGS\s*/\s*([\d.]+)\s*CBM", desc_part)
-        for hbl, pkg, wgt, msr in hbl_blocks:
-            search_area = desc_part.split(hbl)[-1].split("\n\n")[0]
-            hs_match = re.search(r"(\d{4}\.\d{2})", search_area)
-            data["hbl_list"].append({
-                "hbl": hbl, "pkg": pkg, "wgt": format_number(wgt), "msr": format_number(msr), 
-                "hs": hs_match.group(1) if hs_match else ""
-            })
-    return data
-
-# --- 3. 페이지 설정 ---
+# --- 2. 페이지 설정 ---
 st.set_page_config(page_title="Europe Docs tool", layout="wide")
 st.title("🚢 Europe Docs tool")
 
-tab1, tab2, tab3 = st.tabs(["SR 정리", "MBL 검수", "업로드 기록"])
+tab1, tab2, tab3 = st.tabs(["SR 정리", "MBL 검수 (준비중)", "업로드 기록"])
 
 # --- TAB 1: SR 정리 (기존 레이아웃 유지) ---
 with tab1:
@@ -154,83 +116,99 @@ with tab1:
                 st.text_area("결과창", result, height=800, label_visibility="collapsed")
         except Exception as e: st.error(f"오류 발생: {e}")
 
-# --- TAB 2: MBL 검수 (검출 로직 강화) ---
+# --- TAB 2: MBL 검수 (관리자 잠금 로직) ---
 with tab2:
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("**1. 메모장 정보 입력**")
-        input_mode = st.radio("방식 선택", ["복사 붙여넣기", "파일 업로드"], horizontal=True, label_visibility="collapsed")
-        memo_content = ""
-        if input_mode == "복사 붙여넣기":
-            memo_content = st.text_area("메모장 내용을 붙여넣으세요.", height=250)
-        else:
-            m_file = st.file_uploader("메모장 파일 업로드 (.txt)", type=["txt"], key="m_up")
-            if m_file: memo_content = m_file.read().decode("utf-8")
+    st.warning("🚧 본 기능은 현재 개발 및 테스트 중입니다. 관리자 외 사용을 금합니다.")
+    
+    # 세션 상태로 인증 여부 관리
+    if "admin_authenticated" not in st.session_state:
+        st.session_state.admin_authenticated = False
+
+    if not st.session_state.admin_authenticated:
+        # 비밀번호 입력 폼
+        with st.container():
+            col_pw1, col_pw2 = st.columns([1, 2])
+            with col_pw1:
+                password = st.text_input("관리자 비밀번호를 입력하세요", type="password")
+                if st.button("인증하기"):
+                    if password == "1234":  # <--- 여기에 원하시는 비밀번호를 설정하세요
+                        st.session_state.admin_authenticated = True
+                        st.rerun()
+                    else:
+                        st.error("❌ 비밀번호가 틀렸습니다.")
+    else:
+        # 인증 성공 시 보이는 실제 검수 화면
+        st.success("🔓 관리자 인증 성공. 테스트를 진행할 수 있습니다.")
+        if st.button("로그아웃 (다시 잠금)"):
+            st.session_state.admin_authenticated = False
+            st.rerun()
             
-    with col2:
-        st.markdown("**2. 선사 DRAFT BL 업로드**")
-        draft_pdf = st.file_uploader("PDF 파일 업로드 (.pdf)", type=["pdf"], key="d_up", label_visibility="collapsed")
-        
-        if memo_content and draft_pdf:
-            try:
-                sr = parse_sr_txt(memo_content)
-                with pdfplumber.open(draft_pdf) as pdf:
-                    # PDF의 텍스트를 공백 유지하며 추출
-                    full_text = " ".join([p.extract_text().upper() for p in pdf.pages])
+        st.divider()
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**1. SR 엑셀 데이터 입력**")
+            m_file = st.file_uploader("정리 전 SR 엑셀 업로드", type=["xlsx"], key="mbl_sr_up")
                 
-                errors = []
-                
-                # [1] 전체 그랜드 TOTAL 검사
-                if str(sr["total_pkg"]) not in full_text: errors.append(f"❌ 전체 TOTAL 수량 불일치: {sr['total_pkg']} PKGS")
-                if sr["total_wgt"] not in full_text: errors.append(f"❌ 전체 TOTAL 중량 불일치: {sr['total_wgt']} KGS")
-                if sr["total_msr"] not in full_text: errors.append(f"❌ 전체 TOTAL CBM 불일치: {sr['total_msr']} CBM")
-                
-                # [2] TOTAL CNTR 정보 검증
-                for c_data in sr["containers_data"]:
-                    c_no = c_data["no"]
-                    if c_no not in full_text: errors.append(f"❌ 컨테이너 번호 누락/오류: {c_no}")
+        with col2:
+            st.markdown("**2. 선사 DRAFT BL 업로드**")
+            draft_pdf = st.file_uploader("PDF 파일 업로드 (.pdf)", type=["pdf"], key="d_up", label_visibility="collapsed")
+            
+            if m_file and draft_pdf:
+                try:
+                    sr_df_check = pd.read_excel(m_file)
+                    sr_df_check['Seal#1'] = sr_df_check['Seal#1'].fillna('').astype(str).str.split('.').str[0]
                     
-                    c_pos = full_text.find(c_no)
-                    context = full_text[c_pos:c_pos+1200] if c_pos != -1 else full_text
+                    with pdfplumber.open(draft_pdf) as pdf:
+                        full_text = " ".join([p.extract_text().upper() for p in pdf.pages])
                     
-                    if str(c_data["pkg"]) not in context:
-                        errors.append(f"❌ TOTAL CNTR 수량 불일치 (CNTR: {c_no}): {c_data['pkg']} PKGS")
-                    if c_data["wgt"] not in context:
-                        errors.append(f"❌ TOTAL CNTR 중량 불일치 (CNTR: {c_no}): {c_data['wgt']} KGS")
-                    if c_data["msr"] not in context:
-                        errors.append(f"❌ TOTAL CNTR CBM 불일치 (CNTR: {c_no}): {c_data['msr']} CBM")
-
-                # [3] 개별 HBL 상세 검사 (강력한 일치 검사)
-                for item in sr["hbl_list"]:
-                    h_no = item["hbl"]
-                    if h_no not in full_text:
-                        errors.append(f"❌ B/L 번호 찾을 수 없음: {h_no}")
-                        continue
+                    errors = []
                     
-                    # HBL 번호 근처 텍스트에서 해당 수치가 정확히 있는지 확인
-                    h_pos = full_text.find(h_no)
-                    h_context = full_text[h_pos:h_pos+500]
+                    # [1] 전체 그랜드 TOTAL 검사
+                    t_pkg = int(sr_df_check['포장갯수'].sum())
+                    t_wgt = format_number(sr_df_check['Weight'].sum())
+                    t_msr = format_number(sr_df_check['Measure'].sum())
                     
-                    if item["wgt"] not in h_context: 
-                        errors.append(f"❌ 중량 불일치 (HBL: {h_no}): {item['wgt']} KGS")
+                    if str(t_pkg) not in full_text: errors.append(f"❌ 전체 TOTAL 수량 불일치: {t_pkg} PKGS")
+                    if t_wgt not in full_text: errors.append(f"❌ 전체 TOTAL 중량 불일치: {t_wgt} KGS")
+                    if t_msr not in full_text: errors.append(f"❌ 전체 TOTAL CBM 불일치: {t_msr} CBM")
                     
-                    # CBM 검사: "20."과 "20.321"을 구분하기 위해 뒤에 " CBM" 문자열까지 포함하여 검사
-                    cbm_search_str = f"{item['msr']} CBM"
-                    if cbm_search_str not in h_context:
-                        errors.append(f"❌ CBM 불일치 (HBL: {h_no}): {item['msr']} CBM")
+                    # [2] TOTAL CNTR 검증
+                    total_cntr = sr_df_check.groupby(['컨테이너 번호', 'Seal#1']).agg({'포장갯수':'sum', 'Weight':'sum', 'Measure':'sum'}).reset_index()
+                    for _, c_row in total_cntr.iterrows():
+                        c_no = str(c_row['컨테이너 번호']).strip()
+                        c_seal = str(c_row['Seal#1']).strip()
+                        c_pkg = int(c_row['포장갯수'])
+                        c_wgt = format_number(c_row['Weight'])
+                        c_msr = format_number(c_row['Measure'])
                         
-                    if item["hs"] and item["hs"] not in h_context: 
-                        errors.append(f"❌ HS CODE 불일치 (HBL: {h_no}): {item['hs']}")
+                        if c_no not in full_text: errors.append(f"❌ 컨테이너 번호 누락/오류: {c_no}")
+                        c_pos = full_text.find(c_no)
+                        context = full_text[c_pos:c_pos+1200] if c_pos != -1 else full_text
+                        
+                        if str(c_pkg) not in context: errors.append(f"❌ TOTAL CNTR 수량 불일치 (CNTR: {c_no}): {c_pkg} PKGS")
+                        if c_wgt not in context: errors.append(f"❌ TOTAL CNTR 중량 불일치 (CNTR: {c_no}): {c_wgt} KGS")
+                        if c_msr not in context: errors.append(f"❌ TOTAL CNTR CBM 불일치 (CNTR: {c_no}): {c_msr} CBM")
 
-                st.markdown("---")
-                if not errors:
-                    st.success("✅ 불일치 항목 없음 (데이터 일치)")
-                else:
-                    st.warning(f"⚠️ 총 {len(errors)}건의 불일치가 발견되었습니다.")
-                    err_html = "".join([f"<li style='font-size:14px; margin-bottom:2px;'>{e}</li>" for e in errors])
-                    st.markdown(f"<ul style='list-style-type:none; padding-left:0;'>{err_html}</ul>", unsafe_allow_html=True)
-            except Exception as e:
-                st.error(f"오류 발생: {e}")
+                    # [3] 개별 HBL 상세 검사
+                    for _, h_row in sr_df_check.iterrows():
+                        h_no = str(h_row['House B/L No']).strip()
+                        h_wgt = format_number(h_row['Weight'])
+                        h_msr = format_number(h_row['Measure'])
+                        if h_no not in full_text:
+                            errors.append(f"❌ B/L 번호 찾을 수 없음: {h_no}")
+                            continue
+                        h_pos = full_text.find(h_no)
+                        h_context = full_text[h_pos:h_pos+600]
+                        if h_wgt not in h_context: errors.append(f"❌ 중량 불일치 (HBL: {h_no}): {h_wgt} KGS")
+                        if h_msr not in h_context: errors.append(f"❌ CBM 불일치 (HBL: {h_no}): {h_msr} CBM (확인 요망)")
+
+                    st.markdown("---")
+                    if not errors: st.success("✅ 모든 데이터가 정확히 일치합니다.")
+                    else:
+                        st.warning(f"⚠️ 총 {len(errors)}건의 불일치가 발견되었습니다.")
+                        err_html = "".join([f"<li style='font-size:14px; margin-bottom:2px;'>{e}</li>" for e in errors])
+                        st.markdown(f"<ul style='list-style-type:none; padding-left:0;'>{err_html}</ul>", unsafe_allow_html=True)
+                except Exception as e: st.error(f"오류 발생: {e}")
 
 # --- TAB 3: 업로드 기록 ---
 with tab3:
