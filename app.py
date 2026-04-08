@@ -32,22 +32,31 @@ def log_uploaded_filename(fn, category="SR"):
     entry = f"[{now}] ({category}) {fn}\n"
     with open(p, "a", encoding='utf-8') as f: f.write(entry)
 
-# --- 2. 페이지 설정 ---
+# --- 2. 페이지 설정 및 커스텀 디자인 (연한 남색 & 회색) ---
 st.set_page_config(page_title="Europe Docs tool", layout="wide")
+
 st.markdown("""
     <style>
+    /* 업로드 섹션 배경색 (연한 남색/회색 조합) */
+    [data-testid="stFileUploadDropzone"] {
+        background-color: #f0f2f6; /* 연한 회색 */
+        border: 2px dashed #34495e; /* 연한 남색 테두리 */
+        border-radius: 10px;
+    }
+    /* TEST중 안내 박스 */
     .test-box {
         padding: 20px;
-        background-color: #f8f9fa;
-        border-left: 5px solid #007bff;
+        background-color: #ebedef;
+        border-left: 5px solid #2c3e50; /* 남색 포인트 */
         border-radius: 5px;
         margin-bottom: 20px;
-        color: #343a40;
+        color: #2c3e50;
         font-weight: 500;
     }
     </style>
     """, unsafe_allow_html=True)
 
+# 앱 깨어날 때 타이틀 고정
 st.title("🚢 Europe Docs tool")
 
 tab1, tab2, tab3 = st.tabs(["SR 정리", "TEST중", "업로드 기록"])
@@ -70,7 +79,7 @@ with tab1:
             sr_df = pd.read_excel(sr_file)
             item_dict = {}
             if item_file:
-                # ITEM 파일 업로드 시 로그 기록 추가
+                # ITEM 로그 기록 (사용자 요청 반영)
                 log_uploaded_filename(item_file.name, "ITEM")
                 item_df = pd.read_excel(item_file, header=1)
                 item_df.columns = [str(c).strip() for c in item_df.columns]
