@@ -35,18 +35,22 @@ st.title("🚢 Europe Docs tool")
 tab1, tab2 = st.tabs(["SR 정정", "업로드 기록"])
 
 with tab1:
-    col_up1, col_up2 = st.columns(2)
-    with col_up1:
-        sr_file = st.file_uploader("1. SR 엑셀 파일 입력", type=["xlsx"], key="sr_main")
+    # 클릭 최소화: 메인 화면을 3개의 구역으로 분할
+    col_config, col_upload, col_result = st.columns([0.8, 1.2, 2.5])
+
+    with col_config:
+        st.subheader("⚙️ 설정")
         force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환", value=False)
         mark_spacing = st.checkbox("MARK 란 간격 띄우기", value=False)
-    with col_up2:
-        item_file = st.file_uploader("2. 하우스리스트 -> S/R NO 검색 -> 엑셀내려받기 파일 입력(품목명, HS CODE 입력 가능)_선택사항", type=["xlsx"], key="item_sub")
+        st.divider()
+        st.caption("체크 즉시 결과에 반영됩니다.")
 
-    st.divider()
+    with col_upload:
+        st.subheader("📂 업로드")
+        sr_file = st.file_uploader("1. SR 엑셀 파일 입력", type=["xlsx"], key="sr_main")
+        item_file = st.file_uploader("2. 품목/HS 엑셀 (선택)", type=["xlsx"], key="item_sub")
 
     if sr_file:
-        col_res = st.columns([1, 2.5])[1]
         try:
             # 파일이 존재하면 무조건 로그 함수 실행
             log_uploaded_filename(sr_file.name, "SR")
@@ -116,13 +120,18 @@ with tab1:
                 lines.append("")
             
             result = "\n".join(lines)
-            with col_res:
-                st.subheader("정리 결과")
-                if empty_line_bls: st.warning(f"📢 **다중 품목 의심 B/L:** {', '.join(list(set(empty_line_bls)))} -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
-                st.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt")
-                st.text_area("결과창", result, height=800, label_visibility="collapsed")
-        except Exception as e: st.error(f"오류 발생: {e}")
+
+            with col_result:
+                st.subheader("📋 정리 결과")
+                if empty_line_bls: 
+                    st.warning(f"📢 **다중 품목 의심 B/L:** {', '.join(list(set(empty_line_bls)))}")
+                st.download_button("💾 다운로드 (.txt)", result, f"SR_{sr_file.name.split('.')[0]}.txt", use_container_width=True)
+                st.text_area("결과 확인 및 복사", result, height=750)
+                
+        except Exception as e: 
+            with col_result: st.error(f"오류 발생: {e}")
 
 with tab2:
     if os.path.exists("upload_log.txt"):
-        with open("upload_log.txt", "r", encoding='utf-8') as f: st.text_area("Log", f.read(), height=500)
+        with open("upload_log.txt", "r", encoding='utf-8') as f: 
+            st.text_area("Log History", f.read(), height=800)
