@@ -27,7 +27,7 @@ def log_uploaded_filename(fn, category="SR"):
     entry = f"[{now}] ({category}) {fn}\n"
     with open(p, "a", encoding='utf-8') as f: f.write(entry)
 
-# --- 2. 페이지 설정 및 디자인 (사용자 취향 고정) ---
+# --- 2. 페이지 설정 및 디자인 (연한 남색 & 회색 통일) ---
 st.set_page_config(page_title="Europe Docs tool", layout="wide")
 st.markdown("""
     <style>
@@ -55,7 +55,7 @@ st.title("🚢 Europe Docs tool")
 
 tab1, tab_test, tab_ceva, tab_log = st.tabs(["SR 정리", "TEST중", "CEVA(LEH)", "업로드 기록"])
 
-# --- TAB 1: SR 정리 (카고4 원본 로직 완전 복구) ---
+# --- TAB 1: SR 정리 (원본 로직 완전 유지) ---
 with tab1:
     col_up1, col_up2 = st.columns(2)
     with col_up1:
@@ -72,29 +72,18 @@ with tab1:
             log_uploaded_filename(sr_file.name, "SR")
             sr_df = pd.read_excel(sr_file)
             item_dict = {}
-            
             if item_file:
                 log_uploaded_filename(item_file.name, "ITEM")
                 item_df = pd.read_excel(item_file, header=1)
                 item_df.columns = [str(c).strip() for c in item_df.columns]
-                
-                # [품목 경고 로직]
-                warnings = []
                 for _, row in item_df.iterrows():
                     h_no = str(row["House B/L No"]).strip()
-                    p_name = str(row["품목"]).strip()
                     if h_no and h_no != "nan":
-                        item_dict[h_no] = {"desc": p_name, "hs": str(row.get("HS CODE", "")).strip()}
-                        if any(k in p_name.upper() for k in ["BATTERY", "HAZARDOUS", "CHEMICAL"]):
-                            warnings.append(f"{h_no}({p_name})")
-                if warnings:
-                    st.warning(f"⚠️ 확인 필요 품목: {', '.join(warnings)}")
+                        item_dict[h_no] = {"desc": str(row["품목"]).strip(), "hs": str(row.get("HS CODE", "")).strip()}
 
-            # --- SR 카고4 핵심 연산 로직 시작 ---
             cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
             df = sr_df[cols].copy().dropna(subset=['House B/L No'])
             df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
-            
             total = df.groupby(['컨테이너 번호', 'Seal#1']).agg(포장갯수=('포장갯수','sum'), Weight=('Weight','sum'), Measure=('Measure','sum')).reset_index()
             marks = df.groupby(['컨테이너 번호', 'Seal#1'])['House B/L No'].unique().reset_index()
             desc_df = df.sort_values(['컨테이너 번호', 'Seal#1', 'House B/L No'])
@@ -139,9 +128,9 @@ with tab1:
                 st.subheader("정리 결과")
                 st.download_button("💾 메모장 다운로드", result_txt, f"SR_{sr_file.name.split('.')[0]}.txt")
                 st.text_area("결과창", result_txt, height=800, label_visibility="collapsed")
-        except Exception as e: st.error(f"SR 로직 오류: {e}")
+        except Exception as e: st.error(f"SR 오류: {e}")
 
-# --- TAB 3: CEVA(LEH) (좌우 2열 배치 및 데이터 교정) ---
+# --- TAB 3: CEVA(LEH) (좌우 열 2줄 배치 및 데이터 정밀 추출) ---
 with tab_ceva:
     if "ceva_authenticated" not in st.session_state:
         st.session_state.ceva_authenticated = False
@@ -156,22 +145,30 @@ with tab_ceva:
                 log_uploaded_filename(cf.name, "CEVA")
                 cdf = pd.read_excel(cf, header=None)
                 m_list, d_list = [], []
-                # 유동적 탐색 (수량 I열 기준)
+                # 지정된 좌표들 순회 (I열 기준 탐색)
                 for r in range(35, len(cdf)):
-                    if pd.notna(cdf.iloc[r, 8]) and isinstance(cdf.iloc[r, 8], (int, float)):
-                        p, w = format_number(cdf.iloc[r, 8]), format_number(cdf.iloc[r+1, 8])
-                        h = str(cdf.iloc[r+3, 4]).replace("HC:", "").strip() if pd.notna(cdf.iloc[r+3, 4]) else ""
+                    val = cdf.iloc[r, 8] # I열
+                    if pd.notna(val) and isinstance(val, (int, float)):
+                        p = format_number(val) # 수량
+                        w = format_number(cdf.iloc[r+1, 8]) # 중량
+                        h = str(cdf.iloc[r+3, 4]).replace("HC:", "").replace("HS:", "").strip() if pd.notna(cdf.iloc[r+3, 4]) else ""
                         m = str(cdf.iloc[r+1, 16]).strip() if pd.notna(cdf.iloc[r+1, 16]) else ""
                         d = str(cdf.iloc[r+1, 34]).strip() if pd.notna(cdf.iloc[r+1, 34]) else ""
-                        if p != "":
-                            m_list.append(f"{m}\n\n\n")
-                            d_list.append(f"{d}\n\nBK# {m if 'LEH' in m else ''}\n{p} PKGS / {w} KGS /  CBM\nHC: {h}\n\n\n")
+                        
+                        if p != "0":
+                            m_list.append(f"{m}\n\n\n\n")
+                            d_list.append(f"{d}\n\nBK# {m if 'LEH' in m else ''}\n{p} PKGS / {w} KGS /  CBM\nHC: {h}\n\n\n\n")
+                
                 cl, cr = st.columns(2)
-                with cl: st.subheader("MARK"); st.text_area("M_V", "".join(m_list), height=600, label_visibility="collapsed")
-                with cr: st.subheader("DESCRIPTION"); st.text_area("D_V", "".join(d_list), height=600, label_visibility="collapsed")
+                with cl:
+                    st.subheader("MARK")
+                    st.text_area("M_V", "".join(m_list), height=600, label_visibility="collapsed")
+                with cr:
+                    st.subheader("DESCRIPTION")
+                    st.text_area("D_V", "".join(d_list), height=600, label_visibility="collapsed")
             except Exception as e: st.error(f"CEVA 오류: {e}")
 
 # --- TAB 4: 업로드 기록 ---
 with tab_log:
     if os.path.exists("upload_log.txt"):
-        with open("upload_log.txt", "r", encoding='utf-8') as f: st.text_area("Log", f.read(), height=500)
+        with open("upload_log.txt", "r", encoding='utf-8') as f: st.text_area("Log History", f.read(), height=500)
