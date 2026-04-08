@@ -41,7 +41,7 @@ with tab1:
     with col_up1:
         sr_file = st.file_uploader("1. SR 엑셀 파일 입력", type=["xlsx"], key="sr_main")
     with col_up2:
-        item_file = st.file_uploader("2. 품목/HS 엑셀 (선택)", type=["xlsx"], key="item_sub")
+        item_file = st.file_uploader("2. 하우스리스트 -> S/R NO 검색 -> 엑셀내려받기 파일 입력(품목명, HS CODE 입력 가능)_선택사항", type=["xlsx"], key="item_sub")
     with col_opt:
         st.write("") # 라벨 높이 맞춤용
         st.write("") 
@@ -121,7 +121,7 @@ with tab1:
             
             result = "\n".join(lines)
 
-            # 결과 헤더와 다운로드 버튼을 한 줄에 붙여서 상단 배치
+            # 결과 헤더와 다운로드 버튼을 한 줄에 배치
             res_head, res_down = st.columns([3, 1])
             with res_head:
                 st.subheader("정리 결과")
@@ -131,7 +131,7 @@ with tab1:
             if empty_line_bls: 
                 st.warning(f"📢 **다중 품목 의심 B/L:** {', '.join(list(set(empty_line_bls)))} -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
             
-            # 결과 텍스트 영역을 위로 바짝 붙임
+            # 결과 텍스트 영역
             st.text_area("결과창", result, height=800, label_visibility="collapsed")
 
         except Exception as e: 
