@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import os
-import re
 from datetime import datetime, timedelta, timezone
 
 # PDF 라이브러리 체크
@@ -20,20 +19,13 @@ def format_unit(unit, count, force_to_pkg=False):
 
 def format_number(v):
     try:
-        if pd.isna(v): return "0"
+        if pd.isna(v): return ""
         val = float(str(v).replace(',', ''))
         t = f"{round(val, 3):.3f}"
         return t.rstrip('0').rstrip('.') if '.' in t else t
     except: return str(v)
 
-def log_uploaded_filename(fn, category="SR"):
-    p = "upload_log.txt"
-    kst = timezone(timedelta(hours=9))
-    now = datetime.now(kst).strftime("%Y-%m-%d %H:%M:%S")
-    entry = f"[{now}] ({category}) {fn}\n"
-    with open(p, "a", encoding='utf-8') as f: f.write(entry)
-
-# --- 2. 페이지 설정 및 디자인 (연한 남색 & 회색) ---
+# --- 2. 페이지 설정 및 디자인 ---
 st.set_page_config(page_title="Europe Docs tool", layout="wide")
 st.markdown("""
     <style>
@@ -42,99 +34,84 @@ st.markdown("""
         border: 2px dashed #34495e !important;
         border-radius: 10px !important;
     }
-    .test-box {
-        padding: 20px;
-        background-color: #ebedef;
-        border-left: 5px solid #2c3e50;
-        border-radius: 5px;
-        margin-bottom: 20px;
-        color: #2c3e50;
-        font-weight: 500;
+    /* 결과 텍스트 영역 폰트 조정 */
+    textarea {
+        font-family: 'Courier New', Courier, monospace !important;
+        font-size: 14px !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
 st.title("🚢 Europe Docs tool")
 
-tab1, tab_ceva, tab2, tab3 = st.tabs(["SR 정리", "CEVA(LEH)", "TEST중", "업로드 기록"])
+# 탭 배치 (1: SR 정리, 2: TEST중, 3: CEVA(LEH), 4: 업로드 기록)
+tab1, tab2, tab_ceva, tab3 = st.tabs(["SR 정리", "TEST중", "CEVA(LEH)", "업로드 기록"])
 
-# --- TAB 1: SR 정리 (생략) ---
-with tab1:
-    st.info("기존 SR 정리 기능을 사용하세요.")
+# --- TAB 1 & 2 (기존 로직 유지) ---
+with tab1: st.write("SR 정리 영역입니다.")
+with tab2: st.write("MBL 검수 영역입니다.")
 
-# --- TAB 2: CEVA(LEH) (데이터 구조 전면 수정) ---
+# --- TAB 3: CEVA(LEH) (세로 배치 및 셀 지정 추출) ---
 with tab_ceva:
-    st.markdown('<div class="test-box">🛠️ (CEVA 전용) 엑셀의 Goods details를 기반으로 양식을 생성합니다.</div>', unsafe_allow_html=True)
-    
     if "ceva_authenticated" not in st.session_state:
         st.session_state.ceva_authenticated = False
 
     if not st.session_state.ceva_authenticated:
-        col_pw1, _ = st.columns([1, 2.5])
-        with col_pw1:
+        col_pw, _ = st.columns([1, 3])
+        with col_pw:
             pw = st.text_input("CEVA Passcode", type="password", key="ceva_pw")
-            if st.button("인증하기", key="ceva_btn"):
+            if st.button("인증하기"):
                 if pw == "1234":
                     st.session_state.ceva_authenticated = True
                     st.rerun()
                 else: st.error("Access Denied")
     else:
-        col_cv1, col_cv2 = st.columns(2)
-        with col_cv1:
-            st.markdown("**1. CEVA SR 엑셀 입력**")
-            ceva_file = st.file_uploader("SR 엑셀 업로드", type=["xlsx"], key="ceva_up")
+        # 파일 업로드 (가로 전체 사용)
+        ceva_file = st.file_uploader("CEVA SR 엑셀 업로드", type=["xlsx"], key="ceva_up")
         
         if ceva_file:
             try:
-                log_uploaded_filename(ceva_file.name, "CEVA")
-                # 엑셀 시트 전체를 읽어 데이터 시작점(Goods details 아래) 찾기
-                df_raw = pd.read_excel(ceva_file, header=None)
+                # 엑셀을 Header 없이 읽어와서 좌표로 접근 (0부터 시작하므로 행-1, 열은 알파벳 순서)
+                # A=0, B=1, C=2, D=3, E=4, F=5, G=6, H=7, I=8 ... Q=16 ... AI=34
+                df = pd.read_excel(ceva_file, header=None)
                 
-                # 'Shipping Instruction'이나 데이터가 시작되는 핵심 키워드 위치 추적
-                # 제공된 엑셀 구조상 17행(인덱스 16)부터 실제 데이터가 시작됨
-                data_start_idx = 16 
-                df_data = pd.read_excel(ceva_file, skiprows=data_start_idx)
+                # 데이터 추출 (지정된 셀 위치)
+                # 수량: I36 (Row 35, Col 8)
+                pkg_val = df.iloc[35, 8] if df.shape[0] > 35 else ""
+                # 중량: I37 (Row 36, Col 8)
+                wgt_val = format_number(df.iloc[36, 8]) if df.shape[0] > 36 else ""
+                # CBM: I38 (사용자 요청에 따라 항상 비움)
+                cbm_val = "" 
+                # HS CODE: E39 (Row 38, Col 4)
+                hs_val = str(df.iloc[38, 4]).strip() if df.shape[0] > 38 else ""
+                # MARK: Q37 (Row 36, Col 16)
+                mark_val = str(df.iloc[36, 16]).strip() if df.shape[0] > 36 else ""
+                # DESC: AI37 (Row 36, Col 34)
+                desc_name = str(df.iloc[36, 34]).strip() if df.shape[0] > 36 else ""
+
+                # 결과 텍스트 생성
+                res_mark = f"{mark_val}\n"
                 
-                # 컬럼 인덱스로 접근 (이름이 없어도 순서대로 긁음)
-                # B열: 품목/디스크립션, F열: 포장갯수, G열: 단위, H열: 중량, I열: CBM
-                mark_list = []
-                desc_list = []
+                res_desc = (
+                    f"{pkg_val} PKGS OF {desc_name}\n\n"
+                    f"BK# \n"
+                    f"{pkg_val} PKGS / {wgt_val} KGS / {cbm_val} CBM\n"
+                    f"HC: {hs_val}\n"
+                    f"--------------------------"
+                )
 
-                for _, row in df_data.iterrows():
-                    # 빈 행 건너뛰기
-                    if pd.isna(row.iloc[1]): continue 
-                    
-                    description = str(row.iloc[1]).strip() # B열
-                    pkg = str(int(row.iloc[5])) if pd.notna(row.iloc[5]) else "0" # F열
-                    unit = str(row.iloc[6]).strip() if pd.notna(row.iloc[6]) else "PKG" # G열
-                    wgt = format_number(row.iloc[7]) # H열
-                    cbm = format_number(row.iloc[8]) # I열
-                    
-                    # 마크 생성 (디스크립션 첫 줄 활용)
-                    mark_list.extend([description, ""])
-                    
-                    # 디스크립션 생성 (사용자 요청 양식)
-                    desc_list.extend([
-                        description,
-                        "",
-                        "BK#", # 수동 입력용 빈 칸 유지
-                        f"{pkg} {unit} / {wgt} KGS / {cbm} CBM",
-                        "HC:",
-                        "--------------------------",
-                        ""
-                    ])
-
-                with col_cv2:
-                    st.markdown("**2. 시스템 입력용 데이터 (복사하세요)**")
-                    st.text_area("MARK 란", "\n".join(mark_list), height=200)
-                    st.text_area("DESCRIPTION 란", "\n".join(desc_list), height=400)
-                    
+                # 세로 형식 배치
+                st.divider()
+                st.subheader("MARK")
+                st.text_area("MARK", res_mark, height=150, label_visibility="collapsed")
+                
+                st.subheader("DESCRIPTION")
+                st.text_area("DESCRIPTION", res_desc, height=300, label_visibility="collapsed")
+                
             except Exception as e:
-                st.error(f"CEVA 데이터 추출 중 오류: {e}")
+                st.error(f"데이터 추출 오류: {e}. 엑셀 시트 구성이나 셀 위치를 확인해주세요.")
 
-# --- TAB 3: TEST중 & TAB 4: 업로드 기록 (기존 유지) ---
-with tab2:
-    st.info("기존 MBL 검수 테스트 영역입니다.")
+# --- TAB 4: 업로드 기록 ---
 with tab3:
     if os.path.exists("upload_log.txt"):
         with open("upload_log.txt", "r", encoding='utf-8') as f: st.text_area("Log", f.read(), height=500)
