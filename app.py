@@ -35,20 +35,20 @@ st.title("🚢 Europe Docs tool")
 tab1, tab2 = st.tabs(["SR 정정", "업로드 기록"])
 
 with tab1:
-    # 클릭 최소화: 메인 화면을 3개의 구역으로 분할
-    col_config, col_upload, col_result = st.columns([0.8, 1.2, 2.5])
-
-    with col_config:
-        st.subheader("⚙️ 설정")
+    # 업로드와 설정을 한 줄에 배치하여 높이 절약
+    col_up1, col_up2, col_opt = st.columns([1.2, 1.2, 1])
+    
+    with col_up1:
+        sr_file = st.file_uploader("1. SR 엑셀 파일 입력", type=["xlsx"], key="sr_main")
+    with col_up2:
+        item_file = st.file_uploader("2. 품목/HS 엑셀 (선택)", type=["xlsx"], key="item_sub")
+    with col_opt:
+        st.write("") # 라벨 높이 맞춤용
+        st.write("") 
         force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환", value=False)
         mark_spacing = st.checkbox("MARK 란 간격 띄우기", value=False)
-        st.divider()
-        st.caption("체크 즉시 결과에 반영됩니다.")
 
-    with col_upload:
-        st.subheader("📂 업로드")
-        sr_file = st.file_uploader("1. SR 엑셀 파일 입력", type=["xlsx"], key="sr_main")
-        item_file = st.file_uploader("2. 품목/HS 엑셀 (선택)", type=["xlsx"], key="item_sub")
+    st.divider()
 
     if sr_file:
         try:
@@ -121,17 +121,23 @@ with tab1:
             
             result = "\n".join(lines)
 
-            with col_result:
-                st.subheader("📋 정리 결과")
-                if empty_line_bls: 
-                    st.warning(f"📢 **다중 품목 의심 B/L:** {', '.join(list(set(empty_line_bls)))}")
-                st.download_button("💾 다운로드 (.txt)", result, f"SR_{sr_file.name.split('.')[0]}.txt", use_container_width=True)
-                st.text_area("결과 확인 및 복사", result, height=750)
-                
+            # 결과 헤더와 다운로드 버튼을 한 줄에 붙여서 상단 배치
+            res_head, res_down = st.columns([3, 1])
+            with res_head:
+                st.subheader("정리 결과")
+            with res_down:
+                st.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt", use_container_width=True)
+            
+            if empty_line_bls: 
+                st.warning(f"📢 **다중 품목 의심 B/L:** {', '.join(list(set(empty_line_bls)))} -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
+            
+            # 결과 텍스트 영역을 위로 바짝 붙임
+            st.text_area("결과창", result, height=800, label_visibility="collapsed")
+
         except Exception as e: 
-            with col_result: st.error(f"오류 발생: {e}")
+            st.error(f"오류 발생: {e}")
 
 with tab2:
     if os.path.exists("upload_log.txt"):
         with open("upload_log.txt", "r", encoding='utf-8') as f: 
-            st.text_area("Log History", f.read(), height=800)
+            st.text_area("Log", f.read(), height=800)
