@@ -4,13 +4,7 @@ import os
 import re
 from datetime import datetime, timedelta, timezone
 
-# PDF 라이브러리 체크
-try:
-    import pdfplumber
-except ImportError:
-    pass
-
-# --- 1. 유틸리티 함수 (카고4 불변 원칙) ---
+# --- 1. 유틸리티 함수 (카고3/4 불변 원칙) ---
 def format_unit(unit, count, force_to_pkg=False):
     u_str = str(unit).upper() if pd.notna(unit) else "PKG"
     m = {'PK':'PKG', 'PL':'PLT', 'CT':'CTN'}
@@ -34,7 +28,7 @@ def log_uploaded_filename(fn, category="SR"):
     entry = f"[{now}] ({category}) {fn}\n"
     with open(p, "a", encoding='utf-8') as f: f.write(entry)
 
-# --- 2. 페이지 설정 및 디자인 ---
+# --- 2. 페이지 설정 및 디자인 (메모장 글씨체 복구) ---
 st.set_page_config(page_title="Europe Docs tool", layout="wide")
 st.markdown("""
     <style>
@@ -46,23 +40,22 @@ st.markdown("""
         border: 2px dashed #34495e !important;
         border-radius: 10px !important;
     }
+    /* 메모장 글씨체 전처럼 복구 */
     .stTextArea textarea {
-        font-family: monospace !important;
-        font-size: 14px !important;
-        line-height: 1.4 !important;
+        font-family: 'Courier New', Courier, monospace !important;
+        font-size: 15px !important;
+        line-height: 1.6 !important;
+        color: #2c3e50 !important;
     }
-    h3 {
-        font-size: 1rem !important;
-        color: #2c3e50;
-    }
+    h3 { font-size: 1rem !important; color: #2c3e50; }
     </style>
     """, unsafe_allow_html=True)
 
 st.title("🚢 Europe Docs tool")
 
-tab1, tab_mbl, tab_ceva, tab_log = st.tabs(["SR 정리", "MBL 검수", "CEVA(LEH)", "업로드 기록"])
+tab1, tab_ceva, tab_log = st.tabs(["SR 정리", "CEVA(LEH)", "업로드 기록"])
 
-# --- TAB 1: SR 정리 (다중 품목 경고 로직 정밀 수정) ---
+# --- TAB 1: SR 정리 (카고3 다중 품목 경고 로직 완벽 복구) ---
 with tab1:
     col_up1, col_up2 = st.columns(2)
     with col_up1:
@@ -79,23 +72,23 @@ with tab1:
             log_uploaded_filename(sr_file.name, "SR")
             sr_df = pd.read_excel(sr_file)
             item_dict = {}
-            empty_line_bls = [] # 다중 품목 의심 HBL 리스트
+            empty_line_bls = [] 
 
             if item_file:
                 log_uploaded_filename(item_file.name, "ITEM")
                 item_df = pd.read_excel(item_file, header=1)
                 item_df.columns = [str(c).strip() for c in item_df.columns]
                 
-                # [수정] 다중 품목 체크: HBL별로 유니크한 품목 개수가 1개보다 많을 때
-                hbl_counts = item_df.groupby('House B/L No')['품목'].nunique()
-                empty_line_bls = hbl_counts[hbl_counts > 1].index.tolist()
+                # [카고3 핵심] 다중 품목 의심 추출 로직
+                hbl_item_counts = item_df.groupby('House B/L No')['품목'].nunique()
+                empty_line_bls = hbl_item_counts[hbl_item_counts > 1].index.tolist()
 
                 for _, row in item_df.iterrows():
                     h_no = str(row["House B/L No"]).strip()
                     if h_no and h_no != "nan":
                         item_dict[h_no] = {"desc": str(row["품목"]).strip(), "hs": str(row.get("HS CODE", "")).strip()}
 
-            # SR 카고4 원본 연산 로직
+            # 카고3/4 공통 SR 연산 로직
             cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
             df = sr_df[cols].copy().dropna(subset=['House B/L No'])
             df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
@@ -142,45 +135,41 @@ with tab1:
             result = "\n".join(lines)
             with col_res:
                 st.subheader("정리 결과")
-                # [수정] 경고창 출력 조건 강화
                 if empty_line_bls: 
                     st.warning(f"📢 **다중 품목 의심 B/L:** {', '.join(map(str, empty_line_bls))} -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
-                
                 st.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt")
                 st.text_area("결과창", result, height=800, label_visibility="collapsed")
         except Exception as e: st.error(f"오류 발생: {e}")
 
-# --- TAB 3: CEVA(LEH) (좌우 열 2줄 배치) ---
+# --- TAB 2: CEVA(LEH) (요청하신 좌우 2열 배치) ---
 with tab_ceva:
-    if "ceva_authenticated" not in st.session_state:
-        st.session_state.ceva_authenticated = False
-    if not st.session_state.ceva_authenticated:
-        cpw = st.text_input("Passcode", type="password", key="cpw")
+    if "ceva_auth" not in st.session_state: st.session_state.ceva_auth = False
+    if not st.session_state.ceva_auth:
+        cpw = st.text_input("Passcode", type="password")
         if st.button("인증"):
-            if cpw == "1234": st.session_state.ceva_authenticated = True; st.rerun()
+            if cpw == "1234": st.session_state.ceva_auth = True; st.rerun()
     else:
-        cf = st.file_uploader("CEVA SR 엑셀", type=["xlsx"], key="cf")
+        cf = st.file_uploader("CEVA SR 엑셀", type=["xlsx"])
         if cf:
             try:
                 log_uploaded_filename(cf.name, "CEVA")
                 cdf = pd.read_excel(cf, header=None)
                 m_list, d_list = [], []
                 for r in range(35, len(cdf)):
-                    pkg_raw = cdf.iloc[r, 8]
-                    if pd.notna(pkg_raw) and isinstance(pkg_raw, (int, float)):
-                        p, w = format_number(pkg_raw), format_number(cdf.iloc[r+1, 8])
-                        h = str(cdf.iloc[r+3, 4]).replace("HC:", "").replace("HS:", "").strip() if pd.notna(cdf.iloc[r+3, 4]) else ""
+                    if pd.notna(cdf.iloc[r, 8]) and isinstance(cdf.iloc[r, 8], (int, float)):
+                        p, w = format_number(cdf.iloc[r, 8]), format_number(cdf.iloc[r+1, 8])
+                        h = str(cdf.iloc[r+3, 4]).replace("HC:", "").strip() if pd.notna(cdf.iloc[r+3, 4]) else ""
                         m = str(cdf.iloc[r+1, 16]).strip() if pd.notna(cdf.iloc[r+1, 16]) else ""
                         d = str(cdf.iloc[r+1, 34]).strip() if pd.notna(cdf.iloc[r+1, 34]) else ""
                         if p != "":
                             m_list.append(f"{m}\n\n\n\n")
                             d_list.append(f"{d}\n\nBK# {m if 'LEH' in m else ''}\n{p} PKGS / {w} KGS /  CBM\nHC: {h}\n\n\n\n")
                 cl, cr = st.columns(2)
-                with cl: st.subheader("MARK"); st.text_area("M_V", "".join(m_list), height=600, label_visibility="collapsed")
-                with cr: st.subheader("DESCRIPTION"); st.text_area("D_V", "".join(d_list), height=600, label_visibility="collapsed")
-            except Exception as e: st.error(f"CEVA 오류: {e}")
+                with cl: st.subheader("MARK"); st.text_area("M_V", "".join(m_list), height=650, label_visibility="collapsed")
+                with cr: st.subheader("DESCRIPTION"); st.text_area("D_V", "".join(d_list), height=650, label_visibility="collapsed")
+            except Exception as e: st.error(f"오류: {e}")
 
-# --- TAB 4: 업로드 기록 ---
+# --- TAB 3: 업로드 기록 ---
 with tab_log:
     if os.path.exists("upload_log.txt"):
-        with open("upload_log.txt", "r", encoding='utf-8') as f: st.text_area("Log History", f.read(), height=500)
+        with open("upload_log.txt", "r", encoding='utf-8') as f: st.text_area("Log", f.read(), height=500)
