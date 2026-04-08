@@ -35,15 +35,16 @@ st.title("🚢 Europe Docs tool")
 tab1, tab2 = st.tabs(["SR 정정", "업로드 기록"])
 
 with tab1:
-    # 업로드와 설정을 한 줄에 배치하여 높이 절약
+    # 업로드와 설정을 한 줄에 배치하여 높이 절약 및 체크박스 영역 작게 구성
     col_up1, col_up2, col_opt = st.columns([1.2, 1.2, 1])
     
     with col_up1:
         sr_file = st.file_uploader("1. SR 엑셀 파일 입력", type=["xlsx"], key="sr_main")
     with col_up2:
-        item_file = st.file_uploader("2. 하우스리스트 -> S/R NO 검색 -> 엑셀내려받기 파일 입력(품목명, HS CODE 입력 가능)_선택사항", type=["xlsx"], key="item_sub")
+        # 요청하신 문구로 수정 완료
+        item_file = st.file_uploader("2. 하우스리스트 → S/R NO 검색 → 엑셀내려받기 파일 입력(품목명, HS CODE 입력)", type=["xlsx"], key="item_sub")
     with col_opt:
-        st.write("") # 라벨 높이 맞춤용
+        st.write("") # 라벨 높이 맞춤용 공백
         st.write("") 
         force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환", value=False)
         mark_spacing = st.checkbox("MARK 란 간격 띄우기", value=False)
@@ -121,7 +122,7 @@ with tab1:
             
             result = "\n".join(lines)
 
-            # 결과 헤더와 다운로드 버튼을 한 줄에 배치
+            # 결과 헤더와 다운로드 버튼을 한 줄에 배치하여 상단 밀착
             res_head, res_down = st.columns([3, 1])
             with res_head:
                 st.subheader("정리 결과")
@@ -131,7 +132,7 @@ with tab1:
             if empty_line_bls: 
                 st.warning(f"📢 **다중 품목 의심 B/L:** {', '.join(list(set(empty_line_bls)))} -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
             
-            # 결과 텍스트 영역
+            # 결과 텍스트 영역을 위로 바짝 붙임
             st.text_area("결과창", result, height=800, label_visibility="collapsed")
 
         except Exception as e: 
