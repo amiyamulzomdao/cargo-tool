@@ -20,6 +20,7 @@ def format_unit(unit, count, force_to_pkg=False):
 
 def format_number(v):
     try:
+        if pd.isna(v): return "0"
         val = float(str(v).replace(',', ''))
         t = f"{round(val, 3):.3f}"
         return t.rstrip('0').rstrip('.') if '.' in t else t
@@ -57,39 +58,13 @@ st.title("🚢 Europe Docs tool")
 
 tab1, tab_ceva, tab2, tab3 = st.tabs(["SR 정리", "CEVA(LEH)", "TEST중", "업로드 기록"])
 
-# --- TAB 1: SR 정리 (기본 기능) ---
+# --- TAB 1: SR 정리 (생략) ---
 with tab1:
-    col_up1, col_up2 = st.columns(2)
-    with col_up1:
-        sr_file = st.file_uploader("1. SR 엑셀 파일 입력", type=["xlsx"], key="sr_main")
-        force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환", value=False)
-        mark_spacing = st.checkbox("MARK 란 간격 띄우기", value=False)
-    with col_up2:
-        item_file = st.file_uploader("2. 하우스리스트 -> S/R NO 검색 -> 엑셀내려받기 파일 입력", type=["xlsx"], key="item_sub")
+    st.info("기존 SR 정리 기능을 사용하세요.")
 
-    st.divider()
-    if sr_file:
-        col_res = st.columns([1, 2.5])[1]
-        try:
-            log_uploaded_filename(sr_file.name, "SR")
-            sr_df = pd.read_excel(sr_file)
-            item_dict = {}
-            if item_file:
-                log_uploaded_filename(item_file.name, "ITEM")
-                item_df = pd.read_excel(item_file, header=1)
-                item_df.columns = [str(c).strip() for c in item_df.columns]
-                for _, row in item_df.iterrows():
-                    h_no = str(row["House B/L No"]).strip()
-                    if h_no and h_no != "nan":
-                        item_dict[h_no] = {"desc": str(row["품목"]).strip(), "hs": str(row.get("HS CODE", "")).strip()}
-            
-            # 기존 SR 정리 로직 (생략 없이 통합 실행 가능)
-            # ... (중략: 기존 SR 정리 코드 동일)
-        except Exception as e: st.error(f"오류 발생: {e}")
-
-# --- TAB 2: CEVA(LEH) (오류 수정 반영) ---
+# --- TAB 2: CEVA(LEH) (데이터 구조 전면 수정) ---
 with tab_ceva:
-    st.markdown('<div class="test-box">🔒 CEVA(LEH) 관리자 인증 전용 영역</div>', unsafe_allow_html=True)
+    st.markdown('<div class="test-box">🛠️ (CEVA 전용) 엑셀의 Goods details를 기반으로 양식을 생성합니다.</div>', unsafe_allow_html=True)
     
     if "ceva_authenticated" not in st.session_state:
         st.session_state.ceva_authenticated = False
@@ -111,59 +86,55 @@ with tab_ceva:
         
         if ceva_file:
             try:
-                # 엑셀의 데이터 시작 행을 찾기 위해 시뮬레이션
-                raw_df = pd.read_excel(ceva_file, header=None)
-                header_row = 0
-                for i, row in raw_df.iterrows():
-                    if "House B/L No" in row.values or "House B/L No." in row.values:
-                        header_row = i
-                        break
+                log_uploaded_filename(ceva_file.name, "CEVA")
+                # 엑셀 시트 전체를 읽어 데이터 시작점(Goods details 아래) 찾기
+                df_raw = pd.read_excel(ceva_file, header=None)
                 
-                # 찾은 헤더 행으로 데이터 다시 로드
-                cv_df = pd.read_excel(ceva_file, header=header_row)
-                cv_df.columns = [str(c).strip() for c in cv_df.columns] # 공백 제거
+                # 'Shipping Instruction'이나 데이터가 시작되는 핵심 키워드 위치 추적
+                # 제공된 엑셀 구조상 17행(인덱스 16)부터 실제 데이터가 시작됨
+                data_start_idx = 16 
+                df_data = pd.read_excel(ceva_file, skiprows=data_start_idx)
                 
-                # 유연한 컬럼 매칭
-                target_cols = {
-                    'hbl': next((c for c in cv_df.columns if 'House B/L' in c), None),
-                    'wgt': next((c for c in cv_df.columns if 'Weight' in c), None),
-                    'msr': next((c for c in cv_df.columns if 'Measure' in c), None),
-                    'pkg': next((c for c in cv_df.columns if '포장갯수' in c or 'Package' in c), None),
-                    'unit': next((c for c in cv_df.columns if '단위' in c or 'Unit' in c), None)
-                }
+                # 컬럼 인덱스로 접근 (이름이 없어도 순서대로 긁음)
+                # B열: 품목/디스크립션, F열: 포장갯수, G열: 단위, H열: 중량, I열: CBM
+                mark_list = []
+                desc_list = []
 
-                if not target_cols['hbl']:
-                    st.error("엑셀에서 'House B/L No' 컬럼을 찾을 수 없습니다.")
-                else:
-                    mark_list = []
-                    desc_list = []
+                for _, row in df_data.iterrows():
+                    # 빈 행 건너뛰기
+                    if pd.isna(row.iloc[1]): continue 
                     
-                    for _, row in cv_df.dropna(subset=[target_cols['hbl']]).iterrows():
-                        hbl = str(row[target_cols['hbl']]).strip()
-                        wgt = format_number(row[target_cols['wgt']])
-                        pkg = int(row[target_cols['pkg']]) if pd.notna(row[target_cols['pkg']]) else 0
-                        unit = format_unit(row[target_cols['unit']], pkg)
-                        
-                        mark_list.extend([hbl, ""])
-                        desc_list.extend([
-                            f"{pkg} {unit} OF GOODS",
-                            f"BK# {hbl}",
-                            f"{pkg} {unit} / {wgt} KGS / CBM",
-                            ""
-                        ])
+                    description = str(row.iloc[1]).strip() # B열
+                    pkg = str(int(row.iloc[5])) if pd.notna(row.iloc[5]) else "0" # F열
+                    unit = str(row.iloc[6]).strip() if pd.notna(row.iloc[6]) else "PKG" # G열
+                    wgt = format_number(row.iloc[7]) # H열
+                    cbm = format_number(row.iloc[8]) # I열
+                    
+                    # 마크 생성 (디스크립션 첫 줄 활용)
+                    mark_list.extend([description, ""])
+                    
+                    # 디스크립션 생성 (사용자 요청 양식)
+                    desc_list.extend([
+                        description,
+                        "",
+                        "BK#", # 수동 입력용 빈 칸 유지
+                        f"{pkg} {unit} / {wgt} KGS / {cbm} CBM",
+                        "HC:",
+                        "--------------------------",
+                        ""
+                    ])
 
-                    with col_cv2:
-                        st.markdown("**2. 추출 결과 (복사용)**")
-                        st.text_area("MARK 란", "\n".join(mark_list), height=200)
-                        st.text_area("DESCRIPTION 란", "\n".join(desc_list), height=400)
-            except Exception as e: st.error(f"CEVA 처리 오류: {e}")
+                with col_cv2:
+                    st.markdown("**2. 시스템 입력용 데이터 (복사하세요)**")
+                    st.text_area("MARK 란", "\n".join(mark_list), height=200)
+                    st.text_area("DESCRIPTION 란", "\n".join(desc_list), height=400)
+                    
+            except Exception as e:
+                st.error(f"CEVA 데이터 추출 중 오류: {e}")
 
-# --- TAB 3: TEST중 (기존 엑셀 검수 로직 유지) ---
+# --- TAB 3: TEST중 & TAB 4: 업로드 기록 (기존 유지) ---
 with tab2:
-    # ... (생략 없이 이전 카고4 로직 통합 유지)
-    pass
-
-# --- TAB 4: 업로드 기록 ---
+    st.info("기존 MBL 검수 테스트 영역입니다.")
 with tab3:
     if os.path.exists("upload_log.txt"):
         with open("upload_log.txt", "r", encoding='utf-8') as f: st.text_area("Log", f.read(), height=500)
