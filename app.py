@@ -41,7 +41,6 @@ with tab1:
     with col_up1:
         sr_file = st.file_uploader("1. SR 엑셀 파일 입력", type=["xlsx"], key="sr_main")
     with col_up2:
-        # 요청하신 문구로 수정 완료
         item_file = st.file_uploader("2. 하우스리스트 → S/R NO 검색 → 엑셀내려받기 파일 입력(품목명, HS CODE 입력)", type=["xlsx"], key="item_sub")
     with col_opt:
         st.write("") # 라벨 높이 맞춤용 공백
@@ -94,8 +93,11 @@ with tab1:
             lines.extend(["", "", "<MARK>", ""]) 
             for i, r in marks.iterrows():
                 if i > 0: lines.append("") 
-                lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
-                lines.append("") 
+                # 컨테이너가 1대보다 많을 때만 번호 출력
+                if num_containers > 1:
+                    lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
+                    lines.append("") 
+                
                 for hbl in sorted(r['House B/L No']):
                     lines.append(hbl)
                     if num_containers <= 4 and mark_spacing:
@@ -109,7 +111,9 @@ with tab1:
                 cur = (r['컨테이너 번호'], r['Seal#1'])
                 if cur != prev:
                     if prev[0] is not None: lines.extend(["", ""]) 
-                    lines.extend([f"{cur[0]} / {cur[1]}", ""])
+                    # 컨테이너가 1대보다 많을 때만 번호 출력
+                    if num_containers > 1:
+                        lines.extend([f"{cur[0]} / {cur[1]}", ""])
                     prev = cur
                 h_no_raw = str(r['House B/L No']).strip()
                 lines.append(h_no_raw)
