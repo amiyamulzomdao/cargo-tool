@@ -50,7 +50,7 @@ def format_wgt_ceva(v):
 st.set_page_config(page_title="Europe Docs tool", layout="wide")
 st.title("🚢 Europe Docs tool")
 
-# 탭 구성: [SR 정정]은 원본 유지, [CEVA(LEH)] 레이아웃 수정, [업로드 기록]
+# 탭 구성: [SR 정정]은 원본 유지, [CEVA(LEH)] 다운로드 버튼 제거, [업로드 기록]
 tab1, tab_ceva, tab2 = st.tabs(["SR 정정", "CEVA(LEH)", "업로드 기록"])
 
 # ==========================================
@@ -149,13 +149,12 @@ with tab1:
         except Exception as e: st.error(f"오류 발생: {e}")
 
 # ==========================================
-# TAB 2: CEVA(LEH) (레이아웃 수정)
+# TAB 2: CEVA(LEH) (다운로드 버튼 제거)
 # ==========================================
 with tab_ceva:
     col_ceva_left, col_ceva_right = st.columns([1, 1.5])
     
     with col_ceva_left:
-        # [수정] "CEVA 전용 업로드" 라벨 제거
         ceva_file = st.file_uploader("CEVA 엑셀 파일을 업로드하세요", type=["xlsx"], key="ceva_up")
         
     if ceva_file:
@@ -205,10 +204,8 @@ with tab_ceva:
             ceva_result = "<MARK>\n\n" + "\n".join(mark_lines) + "\n\n<DESCRIPTION>\n\n" + "\n".join(desc_lines)
             
             with col_ceva_right:
-                # [수정] 제목을 "📋 MARK & DESC 정리"로 변경
                 st.subheader("📋 MARK & DESC 정리")
-                st.download_button("💾 CEVA 결과 다운로드", ceva_result, f"CEVA_{ceva_file.name.split('.')[0]}.txt", use_container_width=True)
-                # [수정] "CEVA 결과창" 라벨 제거
+                # [수정] 다운로드 버튼 제거
                 st.text_area("CEVA 결과", ceva_result, height=750, label_visibility="collapsed")
                 
         except Exception as e:
