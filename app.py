@@ -30,18 +30,27 @@ def log_uploaded_filename(fn, category="SR"):
 def format_unit_ceva(unit, count):
     if not unit: return ""
     u = str(unit).upper().strip()
-    # 기본 변환
     mapping = {'PLT': 'PLT', 'PALLET': 'PLT', 'PLTS': 'PLT', 'PKG': 'PKG', 'PKGS': 'PKG', 'CTN': 'CTN', 'CTNS': 'CTN'}
     base = mapping.get(u, u)
     if count > 1:
         return base + "S"
     return base
 
+# [CEVA 전용] 중량 포맷 함수 (소수점 0 제거)
+def format_wgt_ceva(v):
+    try:
+        val = float(v)
+        if val == int(val):
+            return str(int(val))
+        return str(val)
+    except:
+        return str(v)
+
 # --- 2. 페이지 설정 ---
 st.set_page_config(page_title="Europe Docs tool", layout="wide")
 st.title("🚢 Europe Docs tool")
 
-# 탭 구성: [SR 정정]은 원본 유지, [CEVA(LEH)] 신규 추가
+# 탭 구성: [SR 정정]은 원본 유지, [CEVA(LEH)] 레이아웃 수정, [업로드 기록]
 tab1, tab_ceva, tab2 = st.tabs(["SR 정정", "CEVA(LEH)", "업로드 기록"])
 
 # ==========================================
@@ -140,41 +149,25 @@ with tab1:
         except Exception as e: st.error(f"오류 발생: {e}")
 
 # ==========================================
-# TAB 2: CEVA(LEH) (새로운 탭 기능)
+# TAB 2: CEVA(LEH) (레이아웃 수정)
 # ==========================================
 with tab_ceva:
-    # 좌측 업로드, 우측 결과창 배치를 위한 컬럼 설정
     col_ceva_left, col_ceva_right = st.columns([1, 1.5])
     
     with col_ceva_left:
-        st.subheader("📂 CEVA 전용 업로드")
+        # [수정] "CEVA 전용 업로드" 라벨 제거
         ceva_file = st.file_uploader("CEVA 엑셀 파일을 업로드하세요", type=["xlsx"], key="ceva_up")
         
     if ceva_file:
         try:
-            # 엑셀 시트 읽기 (Header 없음으로 읽어서 좌표로 접근)
             c_df = pd.read_excel(ceva_file, header=None)
             
-            # 지정된 셀 좌표 리스트 (Pandas 인덱스는 0부터 시작하므로 행번호-1)
-            # 수량,단위,중량,CBM,HC,MARK,DESCRIPTION,BK순
-            coords = [
-                (35, 8, 14, 36, 37, 38, 16, 34, 36), # 1세트 (I36, O36, I37, I38, E39, Q37, AI37)
-                (44, 8, 14, 45, 46, 47, 4, 16, 45),  # 2세트
-                (58, 8, 14, 59, 60, 61, 4, 16, 59),  # 3세트
-                (67, 8, 14, 68, 69, 70, 4, 16, 68),  # 4세트
-                (76, 8, 14, 77, 78, 79, 4, 16, 77),  # 5세트
-                (85, 8, 14, 86, 87, 88, 4, 16, 86),  # 6세트
-                (94, 8, 14, 95, 96, 97, 4, 16, 95)   # 7세트
-            ]
-            
-            # 실제 엑셀 위치에 기반한 데이터 추출 함수
             def get_val(r, c):
                 try: 
                     v = c_df.iloc[r, c]
                     return str(v).strip() if pd.notna(v) else ""
                 except: return ""
 
-            # 추출 위치 정의 (사용자 제공 좌표 기반)
             sets = [
                 {"qty": (35,8), "unit": (35,14), "wgt": (36,8), "cbm": (37,8), "hc": (38,4), "mark": (36,16), "desc": (36,34)},
                 {"qty": (44,8), "unit": (44,14), "wgt": (45,8), "cbm": (46,8), "hc": (47,4), "mark": (45,16), "desc": (45,34)},
@@ -190,34 +183,33 @@ with tab_ceva:
 
             for s in sets:
                 qty_val = get_val(*s["qty"])
-                if not qty_val: continue # 데이터 없으면 패스
+                if not qty_val: continue
                 
                 qty_int = int(float(qty_val)) if qty_val.replace('.','').isdigit() else 0
                 unit_str = format_unit_ceva(get_val(*s["unit"]), qty_int)
-                wgt_str = get_val(*s["wgt"])
-                hc_str = get_val(*s["hc"])
+                wgt_str = format_wgt_ceva(get_val(*s["wgt"]))
+                hc_val_raw = get_val(*s["hc"])
                 mark_str = get_val(*s["mark"])
                 desc_str = get_val(*s["desc"])
                 
-                # MARK 구성
                 mark_lines.append(mark_str)
-                mark_lines.append("")
-                mark_lines.append("") # BK별 3줄 공간 확보
+                mark_lines.append(""); mark_lines.append("") 
                 
-                # DESCRIPTION 구성
-                # 예시: 2 PLTS / 638 KGS / CBM (CBM 뒤 숫자 비움)
                 desc_lines.append(desc_str)
                 desc_lines.append(f"{qty_int} {unit_str} / {wgt_str} KGS / CBM")
-                if hc_str: desc_lines.append(f"HC: {hc_str}")
-                desc_lines.append("")
-                desc_lines.append("") # BK별 3줄 공간 확보
+                if hc_val_raw:
+                    clean_hc = hc_val_raw.replace("HC:", "").strip()
+                    desc_lines.append(f"HC: {clean_hc}")
+                desc_lines.append(""); desc_lines.append("") 
 
             ceva_result = "<MARK>\n\n" + "\n".join(mark_lines) + "\n\n<DESCRIPTION>\n\n" + "\n".join(desc_lines)
             
             with col_ceva_right:
-                st.subheader("📋 CEVA 결과 확인")
+                # [수정] 제목을 "📋 MARK & DESC 정리"로 변경
+                st.subheader("📋 MARK & DESC 정리")
                 st.download_button("💾 CEVA 결과 다운로드", ceva_result, f"CEVA_{ceva_file.name.split('.')[0]}.txt", use_container_width=True)
-                st.text_area("CEVA 결과창", ceva_result, height=750)
+                # [수정] "CEVA 결과창" 라벨 제거
+                st.text_area("CEVA 결과", ceva_result, height=750, label_visibility="collapsed")
                 
         except Exception as e:
             st.error(f"CEVA 처리 중 오류 발생: {e}")
