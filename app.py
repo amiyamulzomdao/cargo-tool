@@ -49,16 +49,6 @@ def format_wgt_ceva(v):
 
 # --- 2. 페이지 설정 ---
 st.set_page_config(page_title="Europe Docs tool", layout="wide")
-
-# [수정] 경고 박스 사이의 간격을 줄이는 CSS 추가
-st.markdown("""
-    <style>
-    div[data-testid="stNotification"] {
-        margin-bottom: -15px;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
 st.title("🚢 Europe Docs tool")
 
 tab1, tab_ceva, tab2 = st.tabs(["SR 정정", "CEVA(LEH)", "업로드 기록"])
@@ -115,19 +105,19 @@ with tab1:
                             is_hs_empty = not detected_hs or detected_hs.strip() == ""
 
                             if is_desc_empty and is_hs_empty:
-                                warning_messages.append(f"⚠️ **{h_no}**: 품목, HS CODE 가 공란입니다!")
+                                warning_messages.append(f"⚠️ {h_no}: 품목, HS CODE 가 공란입니다!")
                             elif is_desc_empty:
-                                warning_messages.append(f"⚠️ **{h_no}**: 품목이 공란입니다!")
+                                warning_messages.append(f"⚠️ {h_no}: 품목이 공란입니다!")
                             elif is_hs_empty:
-                                warning_messages.append(f"⚠️ **{h_no}**: HS CODE 가 공란입니다!")
+                                warning_messages.append(f"⚠️ {h_no}: HS CODE 가 공란입니다!")
                             
                             if "MAGNET" in raw_desc.upper():
-                                warning_messages.append(f"🧲 **{h_no}**: 자성물질 MSDS 필요!")
+                                warning_messages.append(f"🧲 {h_no}: 자성물질 MSDS 필요!")
                             
                             if detected_hs:
                                 clean_hs = str(detected_hs).replace(".", "").replace(" ", "")
                                 if clean_hs == "242400":
-                                    warning_messages.append(f"🚫 **{h_no}**: 유효하지 않은 HS CODE, HOUSEHOLD GOODS 는 9905.00 을 써주세요")
+                                    warning_messages.append(f"🚫 {h_no}: 유효하지 않은 HS CODE, HOUSEHOLD GOODS 는 9905.00 을 써주세요")
 
             # --- [이하 연산 및 출력 로직 보존 - 수정 0%] ---
             cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
@@ -186,14 +176,15 @@ with tab1:
             with res_head: st.subheader("정리 결과")
             with res_down: st.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt", use_container_width=True)
             
-            # [수정] 경고 박스 각각의 형태를 유지하며 간격만 좁게 출력
+            # [수정] 경고 메시지를 하나의 박스 안에 줄바꿈으로 통합 출력
             if empty_line_bls or (item_file and warning_messages):
-                with st.container():
-                    if empty_line_bls:
-                        st.warning(f"📢 **다중 품목 의심 B/L:** {', '.join(list(set(empty_line_bls)))} -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
-                    
-                    for msg in warning_messages:
-                        st.error(msg)
+                if empty_line_bls:
+                    st.warning(f"📢 **다중 품목 의심 B/L:** {', '.join(list(set(empty_line_bls)))} -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
+                
+                if warning_messages:
+                    # 메시지 사이 간격을 최소화하기 위해 하나의 문자열로 결합
+                    combined_warning = "\n\n".join(warning_messages)
+                    st.error(combined_warning)
             
             st.text_area("결과창", result, height=800, label_visibility="collapsed")
         except Exception as e: st.error(f"오류 발생: {e}")
