@@ -100,7 +100,7 @@ with tab1:
                             item_dict[h_no] = {"desc": raw_desc, "hs": detected_hs}
                             if "\n\n" in raw_desc: empty_line_bls.append(h_no)
 
-                            # 검증 로직 (이모티콘 통일)
+                            # 검증 로직 (⚠️ 이모티콘 통일)
                             is_desc_empty = not detected_desc_pure or detected_desc_pure.lower() == "nan" or detected_desc_pure.strip() == ""
                             is_hs_empty = not detected_hs or detected_hs.strip() == ""
 
@@ -176,17 +176,15 @@ with tab1:
             with res_head: st.subheader("정리 결과")
             with res_down: st.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt", use_container_width=True)
             
-            # [수정] 경고 메시지를 요청하신 대로 줄바꿈하여 한 에러 박스 안에 표시
+            # [수정] 박스 내에서 확실하게 줄이 바뀌도록 HTML 태그 사용
             if empty_line_bls or (item_file and warning_messages):
                 if empty_line_bls:
                     st.warning(f"📢 **다중 품목 의심 B/L:** {', '.join(list(set(empty_line_bls)))} -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
                 
                 if warning_messages:
-                    # 각 경고 메시지마다 강제 줄바꿈(\n)을 넣어 한 줄씩 나오게 처리
-                    combined_warning = ""
-                    for msg in warning_messages:
-                        combined_warning += msg + "\n"
-                    st.error(combined_warning)
+                    # <br> 태그를 사용하여 강제 줄바꿈 처리
+                    combined_warning_html = "<br>".join(warning_messages)
+                    st.error(combined_warning_html, icon=None)
             
             st.text_area("결과창", result, height=800, label_visibility="collapsed")
         except Exception as e: st.error(f"오류 발생: {e}")
@@ -211,7 +209,7 @@ with tab_ceva:
                 {"qty": (44,8), "unit": (44,14), "wgt": (45,8), "cbm": (46,8), "hc": (47,4), "mark": (45,16), "desc": (45,34)},
                 {"qty": (58,8), "unit": (58,14), "wgt": (59,8), "cbm": (60,8), "hc": (61,4), "mark": (59,16), "desc": (59,34)},
                 {"qty": (67,8), "unit": (67,14), "wgt": (68,8), "cbm": (69,8), "hc": (70,4), "mark": (68,16), "desc": (68,34)},
-                {"qty": (76,8), "unit": (76,14), "wgt": (77,8), "cbm": (78,8), "hc": (79,4), "mark": (77,16), "desc": (77,34)},
+                {"qty": (76,8), "unit": (77,8), "wgt": (77,8), "cbm": (78,8), "hc": (79,4), "mark": (77,16), "desc": (77,34)},
                 {"qty": (85,8), "unit": (85,14), "wgt": (86,8), "cbm": (87,8), "hc": (88,4), "mark": (86,16), "desc": (86,34)},
                 {"qty": (94,8), "unit": (94,14), "wgt": (95,8), "cbm": (96,8), "hc": (97,4), "mark": (95,16), "desc": (95,34)}
             ]
