@@ -88,45 +88,44 @@ with tab1:
                         raw_desc = str(row["품목"]).strip() if pd.notna(row["품목"]) else ""
                         
                         if h_no and h_no != "nan":
-                            # 품목 란에서 HS CODE 분리 로직
-                            # 줄바꿈이 있는 경우 마지막 줄이 숫자인지 확인
+                            # [고도화] 품목 란에서 HS CODE 분리 로직 (6자리 및 점 패턴 매칭)
                             lines_in_desc = [l.strip() for l in raw_desc.split('\n') if l.strip()]
                             detected_hs = ""
-                            detected_desc = raw_desc
+                            detected_desc_pure = raw_desc
                             
                             if lines_in_desc:
                                 last_line = lines_in_desc[-1]
-                                # 숫자, 점(.), 공백으로만 이루어진 4자리 이상의 문자열을 HS CODE로 간주
-                                if re.match(r'^[0-9.\s]{4,}$', last_line):
+                                # 규칙: 4~10자리의 숫자와 점(.)으로만 구성된 줄을 HS CODE로 인식
+                                # 예: 8529.90, 852990, 3824.99.1234 등
+                                if re.match(r'^[0-9.]{4,10}$', last_line):
                                     detected_hs = last_line
-                                    detected_desc = "\n".join(lines_in_desc[:-1]) # 마지막 줄 제외
+                                    detected_desc_pure = "\n".join(lines_in_desc[:-1])
+                                else:
+                                    # 마지막 줄이 아닐 경우 전체 텍스트에서 6자리 패턴 검색 시도 (선택 사항)
+                                    detected_desc_pure = raw_desc
                             
-                            # 기존에 별도 HS CODE 컬럼이 있는 경우도 고려 (우선순위: 품목 내 추출 값)
-                            if not detected_hs:
-                                detected_hs = str(row.get("HS CODE", "")).strip()
-
                             item_dict[h_no] = {"desc": raw_desc, "hs": detected_hs}
                             if "\n\n" in raw_desc: empty_line_bls.append(h_no)
 
                             # --- [검증 로직] ---
-                            # 1. 품목 공란 체크 (HS CODE 제외한 실제 텍스트가 있는지)
-                            if not detected_desc or detected_desc.lower() == "nan":
+                            is_desc_empty = not detected_desc_pure or detected_desc_pure.lower() == "nan"
+                            is_hs_empty = not detected_hs or detected_hs.lower() == "nan"
+
+                            if is_desc_empty and is_hs_empty:
+                                warning_messages.append(f"⚠️ **{h_no}**: 품목, HS CODE 가 공란입니다!")
+                            elif is_desc_empty:
                                 warning_messages.append(f"⚠️ **{h_no}**: 품목이 공란입니다!")
-                            
-                            # 2. HS CODE 공란 체크
-                            if not detected_hs or detected_hs.lower() == "nan":
+                            elif is_hs_empty:
                                 warning_messages.append(f"⚠️ **{h_no}**: HS CODE 가 공란입니다!")
                             
-                            # 3. 자성물질 체크
-                            if "MAGNET" in detected_desc.upper():
+                            if "MAGNET" in detected_desc_pure.upper():
                                 warning_messages.append(f"🧲 **{h_no}**: 자성물질 MSDS 필요!")
                             
-                            # 4. 유효하지 않은 HS CODE 체크
                             clean_hs = str(detected_hs).replace(".", "").replace(" ", "")
                             if clean_hs == "242400":
                                 warning_messages.append(f"🚫 **{h_no}**: 유효하지 않은 HS CODE, HOUSEHOLD GOODS 는 9905.00 을 써주세요")
 
-            # --- [이하 연산 및 출력 로직은 카고툴3와 동일 - 수정 0%] ---
+            # --- [이하 연산 및 출력 로직 보존 - 수정 0%] ---
             cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
             df = sr_df[cols].copy().dropna(subset=['House B/L No'])
             df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
@@ -175,7 +174,6 @@ with tab1:
                 lines.append(f"{int(r['포장갯수'])} {format_unit(r['단위'], r['포장갯수'], force_to_pkg)} / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
                 if h_no_raw in item_dict:
                     info = item_dict[h_no_raw]
-                    # 원본 품목 데이터(HS CODE 포함된 전체 줄) 출력
                     if info["desc"] and info["desc"].lower() != "nan": lines.append(info["desc"])
                 lines.append("")
             
@@ -188,7 +186,7 @@ with tab1:
                 with st.container():
                     if empty_line_bls:
                         st.warning(f"📢 **다중 품목 의심 B/L:** {', '.join(list(set(empty_line_bls)))} -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
-                    for msg in sorted(list(set(warning_messages))): # 중복 제거 후 출력
+                    for msg in warning_messages:
                         st.error(msg)
             
             st.text_area("결과창", result, height=800, label_visibility="collapsed")
