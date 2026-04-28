@@ -100,7 +100,7 @@ with tab1:
                             item_dict[h_no] = {"desc": raw_desc, "hs": detected_hs}
                             if "\n\n" in raw_desc: empty_line_bls.append(h_no)
 
-                            # 검증 로직 (이모티콘 ⚠️ 통일)
+                            # 검증 로직 (이모티콘 통일)
                             is_desc_empty = not detected_desc_pure or detected_desc_pure.lower() == "nan" or detected_desc_pure.strip() == ""
                             is_hs_empty = not detected_hs or detected_hs.strip() == ""
 
@@ -176,14 +176,16 @@ with tab1:
             with res_head: st.subheader("정리 결과")
             with res_down: st.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt", use_container_width=True)
             
-            # [수정] 경고 메시지를 통합 박스 안에서 줄바꿈 처리하여 출력
+            # [수정] 경고 메시지를 요청하신 대로 줄바꿈하여 한 에러 박스 안에 표시
             if empty_line_bls or (item_file and warning_messages):
                 if empty_line_bls:
                     st.warning(f"📢 **다중 품목 의심 B/L:** {', '.join(list(set(empty_line_bls)))} -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
                 
                 if warning_messages:
-                    # 요청하신 대로 메시지 사이 줄바꿈을 적용하여 하나의 에러 박스로 출력
-                    combined_warning = "\n".join(warning_messages)
+                    # 각 경고 메시지마다 강제 줄바꿈(\n)을 넣어 한 줄씩 나오게 처리
+                    combined_warning = ""
+                    for msg in warning_messages:
+                        combined_warning += msg + "\n"
                     st.error(combined_warning)
             
             st.text_area("결과창", result, height=800, label_visibility="collapsed")
