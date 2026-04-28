@@ -88,28 +88,22 @@ with tab1:
                         raw_desc = str(row["품목"]).strip() if pd.notna(row["품목"]) else ""
                         
                         if h_no and h_no != "nan":
-                            # [고도화] 품목 란에서 HS CODE 분리 로직 (6자리 및 점 패턴 매칭)
-                            lines_in_desc = [l.strip() for l in raw_desc.split('\n') if l.strip()]
-                            detected_hs = ""
-                            detected_desc_pure = raw_desc
+                            # [고도화] 품목 데이터 어디에 있든 4~10자리 숫자 패턴이 있으면 HS CODE로 인정
+                            # 줄바꿈이나 공백을 모두 포함하여 검색
+                            found_hs_list = re.findall(r'[0-9]{4,10}|[0-9]{4,6}\.[0-9]{2,4}', raw_desc)
+                            detected_hs = found_hs_list[-1] if found_hs_list else ""
                             
-                            if lines_in_desc:
-                                last_line = lines_in_desc[-1]
-                                # 규칙: 4~10자리의 숫자와 점(.)으로만 구성된 줄을 HS CODE로 인식
-                                # 예: 8529.90, 852990, 3824.99.1234 등
-                                if re.match(r'^[0-9.]{4,10}$', last_line):
-                                    detected_hs = last_line
-                                    detected_desc_pure = "\n".join(lines_in_desc[:-1])
-                                else:
-                                    # 마지막 줄이 아닐 경우 전체 텍스트에서 6자리 패턴 검색 시도 (선택 사항)
-                                    detected_desc_pure = raw_desc
+                            # HS CODE를 제외한 순수 텍스트 추출 (경고용)
+                            detected_desc_pure = raw_desc
+                            if detected_hs:
+                                detected_desc_pure = raw_desc.replace(detected_hs, "").strip()
                             
                             item_dict[h_no] = {"desc": raw_desc, "hs": detected_hs}
                             if "\n\n" in raw_desc: empty_line_bls.append(h_no)
 
-                            # --- [검증 로직] ---
-                            is_desc_empty = not detected_desc_pure or detected_desc_pure.lower() == "nan"
-                            is_hs_empty = not detected_hs or detected_hs.lower() == "nan"
+                            # --- [정밀 검증 로직] ---
+                            is_desc_empty = not detected_desc_pure or detected_desc_pure.lower() == "nan" or detected_desc_pure.strip() == ""
+                            is_hs_empty = not detected_hs or detected_hs.strip() == ""
 
                             if is_desc_empty and is_hs_empty:
                                 warning_messages.append(f"⚠️ **{h_no}**: 품목, HS CODE 가 공란입니다!")
@@ -118,12 +112,13 @@ with tab1:
                             elif is_hs_empty:
                                 warning_messages.append(f"⚠️ **{h_no}**: HS CODE 가 공란입니다!")
                             
-                            if "MAGNET" in detected_desc_pure.upper():
+                            if "MAGNET" in raw_desc.upper():
                                 warning_messages.append(f"🧲 **{h_no}**: 자성물질 MSDS 필요!")
                             
-                            clean_hs = str(detected_hs).replace(".", "").replace(" ", "")
-                            if clean_hs == "242400":
-                                warning_messages.append(f"🚫 **{h_no}**: 유효하지 않은 HS CODE, HOUSEHOLD GOODS 는 9905.00 을 써주세요")
+                            if detected_hs:
+                                clean_hs = str(detected_hs).replace(".", "").replace(" ", "")
+                                if clean_hs == "242400":
+                                    warning_messages.append(f"🚫 **{h_no}**: 유효하지 않은 HS CODE, HOUSEHOLD GOODS 는 9905.00 을 써주세요")
 
             # --- [이하 연산 및 출력 로직 보존 - 수정 0%] ---
             cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
