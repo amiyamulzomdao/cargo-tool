@@ -176,14 +176,14 @@ with tab1:
             with res_head: st.subheader("정리 결과")
             with res_down: st.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt", use_container_width=True)
             
-            # [수정] 경고 메시지를 하나의 박스 안에 줄바꿈으로 통합 출력
+            # [수정] 경고 메시지를 하나의 에러 박스 안에 줄바꿈 한 번만 사용하여 촘촘하게 표시
             if empty_line_bls or (item_file and warning_messages):
                 if empty_line_bls:
                     st.warning(f"📢 **다중 품목 의심 B/L:** {', '.join(list(set(empty_line_bls)))} -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
                 
                 if warning_messages:
-                    # 메시지 사이 간격을 최소화하기 위해 하나의 문자열로 결합
-                    combined_warning = "\n\n".join(warning_messages)
+                    # 줄바꿈을 한 번만(\n) 사용하여 문장 사이 간격을 최소화
+                    combined_warning = "\n".join(warning_messages)
                     st.error(combined_warning)
             
             st.text_area("결과창", result, height=800, label_visibility="collapsed")
