@@ -49,6 +49,16 @@ def format_wgt_ceva(v):
 
 # --- 2. 페이지 설정 ---
 st.set_page_config(page_title="Europe Docs tool", layout="wide")
+
+# [수정] 경고 박스 사이의 간격을 줄이는 CSS 추가
+st.markdown("""
+    <style>
+    div[data-testid="stNotification"] {
+        margin-bottom: -15px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 st.title("🚢 Europe Docs tool")
 
 tab1, tab_ceva, tab2 = st.tabs(["SR 정정", "CEVA(LEH)", "업로드 기록"])
@@ -176,16 +186,14 @@ with tab1:
             with res_head: st.subheader("정리 결과")
             with res_down: st.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt", use_container_width=True)
             
-            # [수정] 경고문 사이 간격을 좁게 배치하기 위해 하나의 텍스트 블록으로 결합
+            # [수정] 경고 박스 각각의 형태를 유지하며 간격만 좁게 출력
             if empty_line_bls or (item_file and warning_messages):
                 with st.container():
                     if empty_line_bls:
                         st.warning(f"📢 **다중 품목 의심 B/L:** {', '.join(list(set(empty_line_bls)))} -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
                     
-                    if warning_messages:
-                        # 여러 경고문을 줄바꿈 하나로 합쳐서 한 번에 출력 (간격 좁게)
-                        joined_warnings = "\n".join(warning_messages)
-                        st.error(joined_warnings)
+                    for msg in warning_messages:
+                        st.error(msg)
             
             st.text_area("결과창", result, height=800, label_visibility="collapsed")
         except Exception as e: st.error(f"오류 발생: {e}")
