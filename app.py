@@ -176,31 +176,15 @@ with tab1:
             with res_head: st.subheader("정리 결과")
             with res_down: st.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt", use_container_width=True)
             
-            # [수정] 박스 크기를 글자 길이에 맞게 최적화하고 줄바꿈 적용
+            # [수정] 첫 줄 공백 제거 및 박스 크기(위아래 여백) 최소화
             if empty_line_bls or (item_file and warning_messages):
                 if empty_line_bls:
                     st.warning(f"📢 **다중 품목 의심 B/L:** {', '.join(list(set(empty_line_bls)))} -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
                 
                 if warning_messages:
                     combined_warning = "\n".join(warning_messages)
-                    st.markdown(f"""
-                        <div style="
-                            display: inline-block;
-                            padding: 12px 20px;
-                            border-radius: 5px;
-                            background-color: rgba(255, 75, 75, 0.1);
-                            border: 1px solid rgb(255, 75, 75);
-                            color: rgb(255, 75, 75);
-                            font-family: sans-serif;
-                            font-size: 14px;
-                            line-height: 1.6;
-                            white-space: pre-wrap;
-                            margin-bottom: 10px;
-                        ">
-                        {combined_warning}
-                        </div>
-                        <br>
-                    """, unsafe_allow_html=True)
+                    # div 내부의 공백을 완전히 제거하여 첫 줄 들여쓰기 현상 방지
+                    st.markdown(f'<div style="display:inline-block;padding:5px 15px;border-radius:5px;background-color:rgba(255, 75, 75, 0.1);border:1px solid rgb(255, 75, 75);color:rgb(255, 75, 75);font-family:sans-serif;font-size:14px;line-height:1.5;white-space:pre-wrap;margin-bottom:0px;">{combined_warning}</div><br><br>', unsafe_allow_html=True)
             
             st.text_area("결과창", result, height=800, label_visibility="collapsed")
         except Exception as e: st.error(f"오류 발생: {e}")
