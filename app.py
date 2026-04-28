@@ -176,15 +176,21 @@ with tab1:
             with res_head: st.subheader("정리 결과")
             with res_down: st.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt", use_container_width=True)
             
-            # [수정] 박스 내에서 확실하게 줄이 바뀌도록 HTML 태그 사용
+            # [수정] st.error 대신 st.markdown을 사용하여 줄바꿈이 포함된 스타일링된 에러 박스 구현
             if empty_line_bls or (item_file and warning_messages):
                 if empty_line_bls:
                     st.warning(f"📢 **다중 품목 의심 B/L:** {', '.join(list(set(empty_line_bls)))} -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
                 
                 if warning_messages:
-                    # <br> 태그를 사용하여 강제 줄바꿈 처리
-                    combined_warning_html = "<br>".join(warning_messages)
-                    st.error(combined_warning_html, icon=None)
+                    # 각 경고 메시지마다 마크다운 줄바꿈(\n) 적용
+                    combined_warning = "\n".join(warning_messages)
+                    # 스타일이 적용된 에러 박스 안에 텍스트 출력
+                    st.markdown(f"""
+                    <div style="padding:15px; border-radius:5px; background-color:rgba(255, 75, 75, 0.1); border:1px solid rgb(255, 75, 75); color:rgb(255, 75, 75); white-space:pre-wrap;">
+                    {combined_warning}
+                    </div>
+                    <br>
+                    """, unsafe_allow_html=True)
             
             st.text_area("결과창", result, height=800, label_visibility="collapsed")
         except Exception as e: st.error(f"오류 발생: {e}")
