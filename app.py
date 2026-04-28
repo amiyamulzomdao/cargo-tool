@@ -50,11 +50,11 @@ def format_wgt_ceva(v):
 st.set_page_config(page_title="Europe Docs tool", layout="wide")
 st.title("🚢 Europe Docs tool")
 
-# 탭 구성: [SR 정정]은 원본 유지, [CEVA(LEH)] 다운로드 버튼 제거, [업로드 기록]
+# 탭 구성: [SR 정정]은 원본 유지, [CEVA(LEH)], [업로드 기록]
 tab1, tab_ceva, tab2 = st.tabs(["SR 정정", "CEVA(LEH)", "업로드 기록"])
 
 # ==========================================
-# TAB 1: SR 정정 (카고툴1 원본 - 수정 금지)
+# TAB 1: SR 정정 (카고툴3 기반 - 연산 로직/양식 보존)
 # ==========================================
 with tab1:
     col_up1, col_up2, col_opt = st.columns([1.2, 1.2, 1])
@@ -75,6 +75,10 @@ with tab1:
             log_uploaded_filename(sr_file.name, "SR")
             sr_df = pd.read_excel(sr_file)
             item_dict = {}; empty_line_bls = [] 
+            
+            # 신규 경고 메시지 리스트
+            warning_messages = []
+
             if item_file:
                 log_uploaded_filename(item_file.name, "ITEM")
                 item_df = pd.read_excel(item_file, header=1)
@@ -84,9 +88,27 @@ with tab1:
                         h_no = str(row["House B/L No"]).strip()
                         desc_val = str(row["품목"]).strip() if pd.notna(row["품목"]) else ""
                         hs_val = str(row.get("HS CODE", "")).strip() if pd.notna(row.get("HS CODE", "")) else ""
+                        
                         if h_no and h_no != "nan":
                             item_dict[h_no] = {"desc": desc_val, "hs": hs_val}
                             if "\n\n" in desc_val: empty_line_bls.append(h_no)
+
+                            # --- [검증 로직 추가 시작] ---
+                            # 1. 공란 체크
+                            if not desc_val or desc_val.lower() == "nan":
+                                warning_messages.append(f"⚠️ **{h_no}**: 품목이 공란입니다!")
+                            if not hs_val or hs_val.lower() == "nan":
+                                warning_messages.append(f"⚠️ **{h_no}**: HS CODE 가 공란입니다!")
+                            
+                            # 2. MAGNET 자성물질 체크
+                            if "MAGNET" in desc_val.upper():
+                                warning_messages.append(f"🧲 **{h_no}**: 자성물질 MSDS 필요!")
+                            
+                            # 3. 유효하지 않은 HS CODE 체크
+                            clean_hs = hs_val.replace(".", "")
+                            if clean_hs == "242400":
+                                warning_messages.append(f"🚫 **{h_no}**: 유효하지 않은 HS CODE, HOUSEHOLD GOODS 는 9905.00 을 써주세요")
+                            # --- [검증 로직 추가 끝] ---
 
             cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
             df = sr_df[cols].copy().dropna(subset=['House B/L No'])
@@ -144,29 +166,33 @@ with tab1:
             res_head, res_down = st.columns([3, 1])
             with res_head: st.subheader("정리 결과")
             with res_down: st.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt", use_container_width=True)
-            if empty_line_bls: st.warning(f"📢 **다중 품목 의심 B/L:** {', '.join(list(set(empty_line_bls)))} -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
+            
+            # 경고문 표시 구역
+            if empty_line_bls or warning_messages:
+                with st.container():
+                    if empty_line_bls:
+                        st.warning(f"📢 **다중 품목 의심 B/L:** {', '.join(list(set(empty_line_bls)))} -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
+                    for msg in warning_messages:
+                        st.error(msg)
+            
             st.text_area("결과창", result, height=800, label_visibility="collapsed")
         except Exception as e: st.error(f"오류 발생: {e}")
 
 # ==========================================
-# TAB 2: CEVA(LEH) (다운로드 버튼 제거)
+# TAB 2: CEVA(LEH)
 # ==========================================
 with tab_ceva:
     col_ceva_left, col_ceva_right = st.columns([1, 1.5])
-    
     with col_ceva_left:
         ceva_file = st.file_uploader("CEVA 엑셀 파일을 업로드하세요", type=["xlsx"], key="ceva_up")
-        
     if ceva_file:
         try:
             c_df = pd.read_excel(ceva_file, header=None)
-            
             def get_val(r, c):
                 try: 
                     v = c_df.iloc[r, c]
                     return str(v).strip() if pd.notna(v) else ""
                 except: return ""
-
             sets = [
                 {"qty": (35,8), "unit": (35,14), "wgt": (36,8), "cbm": (37,8), "hc": (38,4), "mark": (36,16), "desc": (36,34)},
                 {"qty": (44,8), "unit": (44,14), "wgt": (45,8), "cbm": (46,8), "hc": (47,4), "mark": (45,16), "desc": (45,34)},
@@ -176,38 +202,27 @@ with tab_ceva:
                 {"qty": (85,8), "unit": (85,14), "wgt": (86,8), "cbm": (87,8), "hc": (88,4), "mark": (86,16), "desc": (86,34)},
                 {"qty": (94,8), "unit": (94,14), "wgt": (95,8), "cbm": (96,8), "hc": (97,4), "mark": (95,16), "desc": (95,34)}
             ]
-
             mark_lines = []
             desc_lines = []
-
             for s in sets:
                 qty_val = get_val(*s["qty"])
                 if not qty_val: continue
-                
                 qty_int = int(float(qty_val)) if qty_val.replace('.','').isdigit() else 0
                 unit_str = format_unit_ceva(get_val(*s["unit"]), qty_int)
                 wgt_str = format_wgt_ceva(get_val(*s["wgt"]))
                 hc_val_raw = get_val(*s["hc"])
                 mark_str = get_val(*s["mark"])
                 desc_str = get_val(*s["desc"])
-                
-                mark_lines.append(mark_str)
-                mark_lines.append(""); mark_lines.append("") 
-                
-                desc_lines.append(desc_str)
-                desc_lines.append(f"{qty_int} {unit_str} / {wgt_str} KGS / CBM")
+                mark_lines.append(mark_str); mark_lines.append(""); mark_lines.append("") 
+                desc_lines.append(desc_str); desc_lines.append(f"{qty_int} {unit_str} / {wgt_str} KGS / CBM")
                 if hc_val_raw:
                     clean_hc = hc_val_raw.replace("HC:", "").strip()
                     desc_lines.append(f"HC: {clean_hc}")
                 desc_lines.append(""); desc_lines.append("") 
-
             ceva_result = "<MARK>\n\n" + "\n".join(mark_lines) + "\n\n<DESCRIPTION>\n\n" + "\n".join(desc_lines)
-            
             with col_ceva_right:
                 st.subheader("📋 MARK & DESC 정리")
-                # [수정] 다운로드 버튼 제거
                 st.text_area("CEVA 결과", ceva_result, height=750, label_visibility="collapsed")
-                
         except Exception as e:
             st.error(f"CEVA 처리 중 오류 발생: {e}")
 
