@@ -88,12 +88,11 @@ with tab1:
                         raw_desc = str(row["품목"]).strip() if pd.notna(row["품목"]) else ""
                         
                         if h_no and h_no != "nan":
-                            # [고도화] 품목 데이터 어디에 있든 4~10자리 숫자 패턴이 있으면 HS CODE로 인정
-                            # 줄바꿈이나 공백을 모두 포함하여 검색
+                            # HS CODE 추출 로직
                             found_hs_list = re.findall(r'[0-9]{4,10}|[0-9]{4,6}\.[0-9]{2,4}', raw_desc)
                             detected_hs = found_hs_list[-1] if found_hs_list else ""
                             
-                            # HS CODE를 제외한 순수 텍스트 추출 (경고용)
+                            # 순수 텍스트 추출
                             detected_desc_pure = raw_desc
                             if detected_hs:
                                 detected_desc_pure = raw_desc.replace(detected_hs, "").strip()
@@ -101,7 +100,7 @@ with tab1:
                             item_dict[h_no] = {"desc": raw_desc, "hs": detected_hs}
                             if "\n\n" in raw_desc: empty_line_bls.append(h_no)
 
-                            # --- [정밀 검증 로직] ---
+                            # 검증 로직
                             is_desc_empty = not detected_desc_pure or detected_desc_pure.lower() == "nan" or detected_desc_pure.strip() == ""
                             is_hs_empty = not detected_hs or detected_hs.strip() == ""
 
@@ -177,12 +176,16 @@ with tab1:
             with res_head: st.subheader("정리 결과")
             with res_down: st.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt", use_container_width=True)
             
+            # [수정] 경고문 사이 간격을 좁게 배치하기 위해 하나의 텍스트 블록으로 결합
             if empty_line_bls or (item_file and warning_messages):
                 with st.container():
                     if empty_line_bls:
                         st.warning(f"📢 **다중 품목 의심 B/L:** {', '.join(list(set(empty_line_bls)))} -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
-                    for msg in warning_messages:
-                        st.error(msg)
+                    
+                    if warning_messages:
+                        # 여러 경고문을 줄바꿈 하나로 합쳐서 한 번에 출력 (간격 좁게)
+                        joined_warnings = "\n".join(warning_messages)
+                        st.error(joined_warnings)
             
             st.text_area("결과창", result, height=800, label_visibility="collapsed")
         except Exception as e: st.error(f"오류 발생: {e}")
