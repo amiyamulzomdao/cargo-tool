@@ -57,7 +57,8 @@ tab1, tab_ceva, tab2 = st.tabs(["SR 정정", "CEVA(LEH)", "업로드 기록"])
 # TAB 1: SR 정정 (카고툴3 기반 - 연산 로직/양식 보존)
 # ==========================================
 with tab1:
-    col_up1, col_up2, col_opt = st.columns([1.2, 1.2, 1])
+    # [수정] 2번 파일 업로드 칸의 너비 비중을 늘려(1.2 -> 1.5) 왼쪽으로 당기고 글자 가독성 확보
+    col_up1, col_up2, col_opt = st.columns([1.0, 1.5, 0.8])
     with col_up1:
         sr_file = st.file_uploader("1. SR 엑셀 파일 입력", type=["xlsx"], key="sr_main")
     with col_up2:
@@ -100,7 +101,7 @@ with tab1:
                             item_dict[h_no] = {"desc": raw_desc, "hs": detected_hs}
                             if "\n\n" in raw_desc: empty_line_bls.append(h_no)
 
-                            # 검증 로직
+                            # 검증 로직 (⚠️ 이모티콘 통일)
                             is_desc_empty = not detected_desc_pure or detected_desc_pure.lower() == "nan" or detected_desc_pure.strip() == ""
                             is_hs_empty = not detected_hs or detected_hs.strip() == ""
 
@@ -176,15 +177,14 @@ with tab1:
             with res_head: st.subheader("정리 결과")
             with res_down: st.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt", use_container_width=True)
             
-            # [수정] 첫 줄 공백 제거 및 박스 크기(위아래 여백) 최소화
+            # [수정] 박스 여백 최소화 및 줄바꿈/들여쓰기 완전 제거
             if empty_line_bls or (item_file and warning_messages):
                 if empty_line_bls:
                     st.warning(f"📢 **다중 품목 의심 B/L:** {', '.join(list(set(empty_line_bls)))} -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
                 
                 if warning_messages:
                     combined_warning = "\n".join(warning_messages)
-                    # div 내부의 공백을 완전히 제거하여 첫 줄 들여쓰기 현상 방지
-                    st.markdown(f'<div style="display:inline-block;padding:5px 15px;border-radius:5px;background-color:rgba(255, 75, 75, 0.1);border:1px solid rgb(255, 75, 75);color:rgb(255, 75, 75);font-family:sans-serif;font-size:14px;line-height:1.5;white-space:pre-wrap;margin-bottom:0px;">{combined_warning}</div><br><br>', unsafe_allow_html=True)
+                    st.markdown(f'<div style="display:inline-block;padding:5px 15px;border-radius:5px;background-color:rgba(255, 75, 75, 0.1);border:1px solid rgb(255, 75, 75);color:rgb(255, 75, 75);font-family:sans-serif;font-size:14px;line-height:1.5;white-space:pre-wrap;margin-bottom:5px;">{combined_warning}</div><br>', unsafe_allow_html=True)
             
             st.text_area("결과창", result, height=800, label_visibility="collapsed")
         except Exception as e: st.error(f"오류 발생: {e}")
