@@ -57,7 +57,6 @@ tab1, tab_ceva, tab2 = st.tabs(["SR 정정", "CEVA(LEH)", "업로드 기록"])
 # TAB 1: SR 정정 (Cargo Tool 4 - 대원칙 보존)
 # ==========================================
 with tab1:
-    # 레이아웃 최적화: 2번 업로드 칸 비중을 늘려 가로 길이 확보
     col_up1, col_up2, col_opt = st.columns([1.0, 1.5, 0.8])
     with col_up1:
         sr_file = st.file_uploader("1. SR 엑셀 파일 입력", type=["xlsx"], key="sr_main")
@@ -88,7 +87,6 @@ with tab1:
                         raw_desc = str(row["품목"]).strip() if pd.notna(row["품목"]) else ""
                         
                         if h_no and h_no != "nan":
-                            # HS CODE 추출 로직
                             all_lines = [l.strip() for l in raw_desc.split('\n') if l.strip()]
                             found_hs_list = []
                             for line in all_lines:
@@ -96,15 +94,12 @@ with tab1:
                                     found_hs_list.append(line)
                             
                             detected_hs = found_hs_list[-1] if found_hs_list else ""
-                            
-                            # 순수 품목명 추출
                             detected_desc_pure = raw_desc
                             if detected_hs:
                                 detected_desc_pure = raw_desc.replace(detected_hs, "").strip()
                             
                             item_dict[h_no] = {"desc": raw_desc, "hs": detected_hs}
                             
-                            # [다중 품목 판정 로직]
                             has_multiple = False
                             if len(all_lines) >= 3:
                                 for i in range(len(all_lines) - 2):
@@ -112,11 +107,9 @@ with tab1:
                                         has_multiple = True
                                         break
                             
-                            # [수정] 다중 품목 경고 문구 및 이모티콘 변경
                             if has_multiple:
                                 warning_messages.append(f"📢 {h_no}: 다중 품목 -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
 
-                            # 공란 및 HS CODE 검증 로직 (⚠️ 통일)
                             is_desc_empty = not detected_desc_pure or detected_desc_pure.lower() == "nan" or detected_desc_pure.strip() == ""
                             is_hs_empty = not detected_hs or detected_hs.strip() == ""
 
@@ -135,7 +128,6 @@ with tab1:
                                 if clean_hs == "242400":
                                     warning_messages.append(f"⚠️ {h_no}: 유효하지 않은 HS CODE / HOUSEHOLD GOODS 는 9905.00 을 써주세요.")
 
-            # --- [연산 및 출력 로직 보존 - 수정 0%] ---
             cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
             df = sr_df[cols].copy().dropna(subset=['House B/L No'])
             df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
@@ -192,7 +184,6 @@ with tab1:
             with res_head: st.subheader("정리 결과")
             with res_down: st.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt", use_container_width=True)
             
-            # [경고창 통합 디자인] 모든 경고 메시지를 하나의 스타일로 정렬하여 출력
             if item_file and warning_messages:
                 combined_warning = "\n".join(warning_messages)
                 st.markdown(f'<div style="display:inline-block;padding:5px 15px;border-radius:5px;background-color:rgba(255, 75, 75, 0.1);border:1px solid rgb(255, 75, 75);color:rgb(255, 75, 75);font-family:sans-serif;font-size:14px;line-height:1.5;white-space:pre-wrap;margin-bottom:5px;">{combined_warning}</div><br>', unsafe_allow_html=True)
@@ -201,12 +192,13 @@ with tab1:
         except Exception as e: st.error(f"오류 발생: {e}")
 
 # ==========================================
-# TAB 2: CEVA(LEH)
+# TAB 2: CEVA(LEH) - 결과 레이아웃 좌우 분할
 # ==========================================
 with tab_ceva:
-    col_ceva_left, col_ceva_right = st.columns([1, 1.5])
-    with col_ceva_left:
+    col_ceva_up = st.columns([1])[0]
+    with col_ceva_up:
         ceva_file = st.file_uploader("CEVA 엑셀 파일을 업로드하세요", type=["xlsx"], key="ceva_up")
+    
     if ceva_file:
         try:
             c_df = pd.read_excel(ceva_file, header=None)
@@ -215,6 +207,7 @@ with tab_ceva:
                     v = c_df.iloc[r, c]
                     return str(v).strip() if pd.notna(v) else ""
                 except: return ""
+            
             sets = [
                 {"qty": (35,8), "unit": (35,14), "wgt": (36,8), "cbm": (37,8), "hc": (38,4), "mark": (36,16), "desc": (36,34)},
                 {"qty": (44,8), "unit": (44,14), "wgt": (45,8), "cbm": (46,8), "hc": (47,4), "mark": (45,16), "desc": (45,34)},
@@ -224,8 +217,10 @@ with tab_ceva:
                 {"qty": (85,8), "unit": (85,14), "wgt": (86,8), "cbm": (87,8), "hc": (88,4), "mark": (86,16), "desc": (86,34)},
                 {"qty": (94,8), "unit": (94,14), "wgt": (95,8), "cbm": (96,8), "hc": (97,4), "mark": (95,16), "desc": (95,34)}
             ]
+            
             mark_lines = []
             desc_lines = []
+            
             for s in sets:
                 qty_val = get_val(*s["qty"])
                 if not qty_val: continue
@@ -235,16 +230,35 @@ with tab_ceva:
                 hc_val_raw = get_val(*s["hc"])
                 mark_str = get_val(*s["mark"])
                 desc_str = get_val(*s["desc"])
-                mark_lines.append(mark_str); mark_lines.append(""); mark_lines.append("") 
-                desc_lines.append(desc_str); desc_lines.append(f"{qty_int} {unit_str} / {wgt_str} KGS / CBM")
+                
+                # MARK 구성
+                mark_lines.append(mark_str)
+                mark_lines.append("")
+                mark_lines.append("") 
+                
+                # DESC 구성
+                desc_lines.append(desc_str)
+                desc_lines.append(f"{qty_int} {unit_str} / {wgt_str} KGS / CBM")
                 if hc_val_raw:
                     clean_hc = hc_val_raw.replace("HC:", "").strip()
                     desc_lines.append(f"HC: {clean_hc}")
-                desc_lines.append(""); desc_lines.append("") 
-            ceva_result = "<MARK>\n\n" + "\n".join(mark_lines) + "\n\n<DESCRIPTION>\n\n" + "\n".join(desc_lines)
-            with col_ceva_right:
-                st.subheader("📋 MARK & DESC 정리")
-                st.text_area("CEVA 결과", ceva_result, height=750, label_visibility="collapsed")
+                desc_lines.append("")
+                desc_lines.append("") 
+            
+            final_mark = "\n".join(mark_lines)
+            final_desc = "\n".join(desc_lines)
+            
+            st.divider()
+            
+            # 결과물 좌우 배치
+            res_col1, res_col2 = st.columns(2)
+            with res_col1:
+                st.subheader("<MARK>")
+                st.text_area("MARK 결과", final_mark, height=600, label_visibility="collapsed")
+            with res_col2:
+                st.subheader("<DESCRIPTION>")
+                st.text_area("DESC 결과", final_desc, height=600, label_visibility="collapsed")
+                
         except Exception as e:
             st.error(f"CEVA 처리 중 오류 발생: {e}")
 
