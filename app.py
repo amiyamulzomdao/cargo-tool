@@ -62,7 +62,6 @@ with tab1:
     with col_up1:
         sr_file = st.file_uploader("1. SR 엑셀 파일 입력", type=["xlsx"], key="sr_main")
     with col_up2:
-        # [수정] 요청하신 정확한 문구로 복구
         item_file = st.file_uploader("2. 하우스리스트 → S/R NO 검색 → 엑셀내려받기 파일 입력(품목, HS CODE 추가 가능)", type=["xlsx"], key="item_sub")
     with col_opt:
         st.write("") 
@@ -90,15 +89,34 @@ with tab1:
                         raw_desc = str(row["품목"]).strip() if pd.notna(row["품목"]) else ""
                         
                         if h_no and h_no != "nan":
-                            found_hs_list = re.findall(r'[0-9]{4,10}|[0-9]{4,6}\.[0-9]{2,4}', raw_desc)
+                            # HS CODE 추출 (어느 위치에 있든 숫자 패턴 찾기)
+                            all_lines = [l.strip() for l in raw_desc.split('\n') if l.strip()]
+                            found_hs_list = []
+                            for line in all_lines:
+                                if re.match(r'^[0-9.]{4,10}$', line):
+                                    found_hs_list.append(line)
+                            
                             detected_hs = found_hs_list[-1] if found_hs_list else ""
                             
+                            # 순수 품목명 추출
                             detected_desc_pure = raw_desc
                             if detected_hs:
                                 detected_desc_pure = raw_desc.replace(detected_hs, "").strip()
                             
                             item_dict[h_no] = {"desc": raw_desc, "hs": detected_hs}
-                            if "\n\n" in raw_desc: empty_line_bls.append(h_no)
+                            
+                            # [다중 품목 판정 로직 수정]
+                            # 실제 텍스트가 있는 줄들 중에서 '텍스트 -> 숫자 -> 텍스트' 패턴이 발견되면 다중 품목으로 간주
+                            has_multiple = False
+                            if len(all_lines) >= 3:
+                                for i in range(len(all_lines) - 2):
+                                    # 현재 줄이 숫자(HS)인데, 그 다음 줄에 또 텍스트가 나오면 다중 품목임
+                                    if re.match(r'^[0-9.]{4,10}$', all_lines[i]) and not re.match(r'^[0-9.]{4,10}$', all_lines[i+1]):
+                                        has_multiple = True
+                                        break
+                            
+                            if has_multiple:
+                                empty_line_bls.append(h_no)
 
                             # 검증 로직
                             is_desc_empty = not detected_desc_pure or detected_desc_pure.lower() == "nan" or detected_desc_pure.strip() == ""
@@ -176,7 +194,7 @@ with tab1:
             with res_head: st.subheader("정리 결과")
             with res_down: st.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt", use_container_width=True)
             
-            # 경고창 디자인: 첫 줄 공백 제거 및 박스 크기 최소화
+            # 경고창 디자인
             if empty_line_bls or (item_file and warning_messages):
                 if empty_line_bls:
                     st.warning(f"📢 **다중 품목 의심 B/L:** {', '.join(list(set(empty_line_bls)))} -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
