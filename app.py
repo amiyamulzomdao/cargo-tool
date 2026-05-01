@@ -48,13 +48,13 @@ def format_wgt_ceva(v):
         return str(v)
 
 # --- 2. 페이지 설정 ---
-st.set_page_config(page_title="Europe Docs tool (Cargo Tool 4)", layout="wide")
+st.set_page_config(page_title="Europe Docs tool (Cargo Tool 5)", layout="wide")
 st.title("🚢 Europe Docs tool")
 
 tab1, tab_ceva, tab2 = st.tabs(["SR 정정", "CEVA(LEH)", "업로드 기록"])
 
 # ==========================================
-# TAB 1: SR 정정 (Cargo Tool 4 - 대원칙 보존)
+# TAB 1: SR 정정 (Cargo Tool 5 - 대원칙 보존)
 # ==========================================
 with tab1:
     col_up1, col_up2, col_opt = st.columns([1.0, 1.5, 0.8])
@@ -90,7 +90,8 @@ with tab1:
                             all_lines = [l.strip() for l in raw_desc.split('\n') if l.strip()]
                             found_hs_list = []
                             for line in all_lines:
-                                if re.match(r'^[0-9.]{4,10}$', line):
+                                # 숫자와 점으로만 구성된 패턴 추출
+                                if re.match(r'^[0-9.]{4,11}$', line):
                                     found_hs_list.append(line)
                             
                             detected_hs = found_hs_list[-1] if found_hs_list else ""
@@ -100,16 +101,17 @@ with tab1:
                             
                             item_dict[h_no] = {"desc": raw_desc, "hs": detected_hs}
                             
+                            # 1. 다중 품목 판정
                             has_multiple = False
                             if len(all_lines) >= 3:
                                 for i in range(len(all_lines) - 2):
                                     if re.match(r'^[0-9.]{4,10}$', all_lines[i]) and not re.match(r'^[0-9.]{4,10}$', all_lines[i+1]):
                                         has_multiple = True
                                         break
-                            
                             if has_multiple:
                                 warning_messages.append(f"📢 {h_no}: 다중 품목 -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
 
+                            # 2. HS CODE 형식 및 공란 검증
                             is_desc_empty = not detected_desc_pure or detected_desc_pure.lower() == "nan" or detected_desc_pure.strip() == ""
                             is_hs_empty = not detected_hs or detected_hs.strip() == ""
 
@@ -119,6 +121,16 @@ with tab1:
                                 warning_messages.append(f"⚠️ {h_no}: 품목이 공란입니다!")
                             elif is_hs_empty:
                                 warning_messages.append(f"⚠️ {h_no}: HS CODE 가 공란입니다!")
+                            else:
+                                # [신규] HS CODE 숫자 6자리 형식 검증 (000000 또는 0000.00 만 허용)
+                                clean_hs_digits = re.sub(r'[^0-9]', '', detected_hs)
+                                # 마침표가 있다면 반드시 0000.00 형식이어야 함
+                                if "." in detected_hs:
+                                    if not re.match(r'^\d{4}\.\d{2}$', detected_hs):
+                                        warning_messages.append(f"⚠️ {h_no}: HS CODE 형식 오류")
+                                # 마침표가 없다면 반드시 숫자 6자리여야 함
+                                elif len(clean_hs_digits) != 6:
+                                    warning_messages.append(f"⚠️ {h_no}: HS CODE 형식 오류")
                             
                             if "MAGNET" in raw_desc.upper():
                                 warning_messages.append(f"⚠️ {h_no}: 자성물질 MSDS 필요!")
@@ -128,6 +140,7 @@ with tab1:
                                 if clean_hs == "242400":
                                     warning_messages.append(f"⚠️ {h_no}: 유효하지 않은 HS CODE / HOUSEHOLD GOODS 는 9905.00 을 써주세요.")
 
+            # --- [연산/출력 로직 보존] ---
             cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
             df = sr_df[cols].copy().dropna(subset=['House B/L No'])
             df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
@@ -139,7 +152,6 @@ with tab1:
             
             lines = []
             num_containers = len(total)
-            
             if num_containers > 1:
                 g_p = int(total['포장갯수'].sum())
                 total_line = f"TOTAL: {g_p} PKGS / {format_number(total['Weight'].sum())} KGS / {format_number(total['Measure'].sum())} CBM"
@@ -157,10 +169,8 @@ with tab1:
                     lines.append("") 
                 for hbl in sorted(r['House B/L No']):
                     lines.append(hbl)
-                    if num_containers <= 4 and mark_spacing:
-                        lines.append("") 
-                if not (num_containers <= 4 and mark_spacing):
-                    lines.append("") 
+                    if num_containers <= 4 and mark_spacing: lines.append("") 
+                if not (num_containers <= 4 and mark_spacing): lines.append("") 
             
             lines.extend(["", "<DESCRIPTION>", ""]) 
             prev = (None, None)
@@ -168,8 +178,7 @@ with tab1:
                 cur = (r['컨테이너 번호'], r['Seal#1'])
                 if cur != prev:
                     if prev[0] is not None: lines.extend(["", ""]) 
-                    if num_containers > 1:
-                        lines.extend([f"{cur[0]} / {cur[1]}", ""])
+                    if num_containers > 1: lines.extend([f"{cur[0]} / {cur[1]}", ""])
                     prev = cur
                 h_no_raw = str(r['House B/L No']).strip()
                 lines.append(h_no_raw)
@@ -192,7 +201,7 @@ with tab1:
         except Exception as e: st.error(f"오류 발생: {e}")
 
 # ==========================================
-# TAB 2: CEVA(LEH) - 결과 레이아웃 좌우 분할
+# TAB 2: CEVA(LEH)
 # ==========================================
 with tab_ceva:
     col_ceva_up = st.columns([1])[0]
@@ -218,49 +227,31 @@ with tab_ceva:
                 {"qty": (94,8), "unit": (94,14), "wgt": (95,8), "cbm": (96,8), "hc": (97,4), "mark": (95,16), "desc": (95,34)}
             ]
             
-            mark_lines = []
-            desc_lines = []
-            
+            mark_lines, desc_lines = [], []
             for s in sets:
                 qty_val = get_val(*s["qty"])
                 if not qty_val: continue
                 qty_int = int(float(qty_val)) if qty_val.replace('.','').isdigit() else 0
                 unit_str = format_unit_ceva(get_val(*s["unit"]), qty_int)
                 wgt_str = format_wgt_ceva(get_val(*s["wgt"]))
-                hc_val_raw = get_val(*s["hc"])
-                mark_str = get_val(*s["mark"])
-                desc_str = get_val(*s["desc"])
+                hc_val_raw, mark_str, desc_str = get_val(*s["hc"]), get_val(*s["mark"]), get_val(*s["desc"])
                 
-                # MARK 구성
-                mark_lines.append(mark_str)
-                mark_lines.append("")
-                mark_lines.append("") 
-                
-                # DESC 구성
+                mark_lines.extend([mark_str, "", ""])
                 desc_lines.append(desc_str)
                 desc_lines.append(f"{qty_int} {unit_str} / {wgt_str} KGS / CBM")
                 if hc_val_raw:
-                    clean_hc = hc_val_raw.replace("HC:", "").strip()
-                    desc_lines.append(f"HC: {clean_hc}")
-                desc_lines.append("")
-                desc_lines.append("") 
-            
-            final_mark = "\n".join(mark_lines)
-            final_desc = "\n".join(desc_lines)
+                    desc_lines.append(f"HC: {hc_val_raw.replace('HC:', '').strip()}")
+                desc_lines.extend(["", ""]) 
             
             st.divider()
-            
-            # 결과물 좌우 배치
             res_col1, res_col2 = st.columns(2)
             with res_col1:
                 st.subheader("<MARK>")
-                st.text_area("MARK 결과", final_mark, height=600, label_visibility="collapsed")
+                st.text_area("MARK 결과", "\n".join(mark_lines), height=600, label_visibility="collapsed")
             with res_col2:
                 st.subheader("<DESCRIPTION>")
-                st.text_area("DESC 결과", final_desc, height=600, label_visibility="collapsed")
-                
-        except Exception as e:
-            st.error(f"CEVA 처리 중 오류 발생: {e}")
+                st.text_area("DESC 결과", "\n".join(desc_lines), height=600, label_visibility="collapsed")
+        except Exception as e: st.error(f"CEVA 처리 중 오류 발생: {e}")
 
 # ==========================================
 # TAB 3: 업로드 기록
