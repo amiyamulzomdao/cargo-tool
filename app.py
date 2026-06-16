@@ -54,7 +54,7 @@ st.title("🚢 Europe Docs tool")
 tab1, tab_ceva, tab2 = st.tabs(["SR 정정", "CEVA(LEH)", "업로드 기록"])
 
 # ==========================================
-# TAB 1: SR 정정 (Cargo Tool 5 - 대원칙 보존)
+# TAB 1: SR 정정 (Cargo Tool 5 - 대원칙 보존 / 수정 없음 0%)
 # ==========================================
 with tab1:
     col_up1, col_up2, col_opt = st.columns([1.0, 1.5, 0.8])
@@ -90,7 +90,6 @@ with tab1:
                             all_lines = [l.strip() for l in raw_desc.split('\n') if l.strip()]
                             found_hs_list = []
                             for line in all_lines:
-                                # 숫자와 점으로만 구성된 패턴 추출
                                 if re.match(r'^[0-9.]{4,11}$', line):
                                     found_hs_list.append(line)
                             
@@ -101,7 +100,6 @@ with tab1:
                             
                             item_dict[h_no] = {"desc": raw_desc, "hs": detected_hs}
                             
-                            # 1. 다중 품목 판정
                             has_multiple = False
                             if len(all_lines) >= 3:
                                 for i in range(len(all_lines) - 2):
@@ -111,7 +109,6 @@ with tab1:
                             if has_multiple:
                                 warning_messages.append(f"📢 {h_no}: 다중 품목 -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
 
-                            # 2. HS CODE 형식 및 공란 검증
                             is_desc_empty = not detected_desc_pure or detected_desc_pure.lower() == "nan" or detected_desc_pure.strip() == ""
                             is_hs_empty = not detected_hs or detected_hs.strip() == ""
 
@@ -122,13 +119,10 @@ with tab1:
                             elif is_hs_empty:
                                 warning_messages.append(f"⚠️ {h_no}: HS CODE 가 공란입니다!")
                             else:
-                                # [신규] HS CODE 숫자 6자리 형식 검증 (000000 또는 0000.00 만 허용)
                                 clean_hs_digits = re.sub(r'[^0-9]', '', detected_hs)
-                                # 마침표가 있다면 반드시 0000.00 형식이어야 함
                                 if "." in detected_hs:
                                     if not re.match(r'^\d{4}\.\d{2}$', detected_hs):
                                         warning_messages.append(f"⚠️ {h_no}: HS CODE 형식 오류")
-                                # 마침표가 없다면 반드시 숫자 6자리여야 함
                                 elif len(clean_hs_digits) != 6:
                                     warning_messages.append(f"⚠️ {h_no}: HS CODE 형식 오류")
                             
@@ -140,7 +134,6 @@ with tab1:
                                 if clean_hs == "242400":
                                     warning_messages.append(f"⚠️ {h_no}: 유효하지 않은 HS CODE / HOUSEHOLD GOODS 는 9905.00 을 써주세요.")
 
-            # --- [연산/출력 로직 보존] ---
             cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
             df = sr_df[cols].copy().dropna(subset=['House B/L No'])
             df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
@@ -201,7 +194,7 @@ with tab1:
         except Exception as e: st.error(f"오류 발생: {e}")
 
 # ==========================================
-# TAB 2: CEVA(LEH)
+# TAB 2: CEVA(LEH) - 5번째 세트 규칙성/오타 수정 완료
 # ==========================================
 with tab_ceva:
     col_ceva_up = st.columns([1])[0]
@@ -217,12 +210,13 @@ with tab_ceva:
                     return str(v).strip() if pd.notna(v) else ""
                 except: return ""
             
+            # [수정] 5번째 세트의 행 오타 교정 및 unit 단위 열을 원래대로 O열(14)로 안전하게 복구
             sets = [
                 {"qty": (35,8), "unit": (35,14), "wgt": (36,8), "cbm": (37,8), "hc": (38,4), "mark": (36,16), "desc": (36,34)},
                 {"qty": (44,8), "unit": (44,14), "wgt": (45,8), "cbm": (46,8), "hc": (47,4), "mark": (45,16), "desc": (45,34)},
                 {"qty": (58,8), "unit": (58,14), "wgt": (59,8), "cbm": (60,8), "hc": (61,4), "mark": (59,16), "desc": (59,34)},
                 {"qty": (67,8), "unit": (67,14), "wgt": (68,8), "cbm": (69,8), "hc": (70,4), "mark": (68,16), "desc": (68,34)},
-                {"qty": (76,8), "unit": (77,8), "wgt": (77,8), "cbm": (78,8), "hc": (79,4), "mark": (77,16), "desc": (77,34)},
+                {"qty": (76,8), "unit": (76,14), "wgt": (77,8), "cbm": (78,8), "hc": (79,4), "mark": (77,16), "desc": (77,34)}, # 👈 깔끔하게 정상 복구 완료!
                 {"qty": (85,8), "unit": (85,14), "wgt": (86,8), "cbm": (87,8), "hc": (88,4), "mark": (86,16), "desc": (86,34)},
                 {"qty": (94,8), "unit": (94,14), "wgt": (95,8), "cbm": (96,8), "hc": (97,4), "mark": (95,16), "desc": (95,34)}
             ]
@@ -251,7 +245,7 @@ with tab_ceva:
             with res_col2:
                 st.subheader("<DESCRIPTION>")
                 st.text_area("DESC 결과", "\n".join(desc_lines), height=600, label_visibility="collapsed")
-        except Exception as e: st.error(f"CEVA 처리 중 오류 발생: {e}")
+        except Exception as e: st.error(f"오류 발생: {e}")
 
 # ==========================================
 # TAB 3: 업로드 기록
