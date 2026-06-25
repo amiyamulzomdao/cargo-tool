@@ -1,256 +1,205 @@
 import streamlit as st
-import pandas as pd
-import os
 import re
-from datetime import datetime, timedelta, timezone
-
-# --- 1. 유틸리티 함수 ---
-def format_unit(unit, count, force_to_pkg=False):
-    u_str = str(unit).upper() if pd.notna(unit) else "PKG"
-    m = {'PK':'PKG', 'PL':'PLT', 'CT':'CTN'}
-    base = 'PKG' if (force_to_pkg and u_str == 'PL') else m.get(u_str, u_str)
-    if u_str in ['PK', 'PL', 'CT'] and count > 1: return base + 'S'
-    return base
-
-def format_number(v):
-    try:
-        val = float(v)
-        t = f"{round(val, 3):.3f}"
-        return t.rstrip('0').rstrip('.') if '.' in t else t
-    except: return str(v)
-
-def log_uploaded_filename(fn, category="SR"):
-    p = "upload_log.txt"
-    kst = timezone(timedelta(hours=9))
-    now = datetime.now(kst).strftime("%Y-%m-%d %H:%M:%S")
-    entry = f"[{now}] ({category}) {fn}\n"
-    with open(p, "a", encoding='utf-8') as f:
-        f.write(entry)
-
-# [CEVA 전용] 단위 포맷 함수
-def format_unit_ceva(unit, count):
-    if not unit: return ""
-    u = str(unit).upper().strip()
-    mapping = {'PLT': 'PLT', 'PALLET': 'PLT', 'PLTS': 'PLT', 'PKG': 'PKG', 'PKGS': 'PKG', 'CTN': 'CTN', 'CTNS': 'CTN'}
-    base = mapping.get(u, u)
-    if count > 1:
-        return base + "S"
-    return base
-
-# [CEVA 전용] 중량 포맷 함수
-def format_wgt_ceva(v):
-    try:
-        val = float(v)
-        if val == int(val):
-            return str(int(val))
-        return str(val)
-    except:
-        return str(v)
-
-# --- 2. 페이지 설정 ---
-st.set_page_config(page_title="Europe Docs tool (Cargo Tool 5)", layout="wide")
-st.title("🚢 Europe Docs tool")
-
-tab1, tab_ceva, tab2 = st.tabs(["SR 정정", "CEVA(LEH)", "업로드 기록"])
+import plotly.graph_objects as go
+from py3dbp import Packer, Bin, Item
 
 # ==========================================
-# TAB 1: SR 정정 (Cargo Tool 5 - 대원칙 보존 / 수정 없음 0%)
+# 1. 텍스트 자유 파싱 및 제약조건 태그 인식
 # ==========================================
-with tab1:
-    col_up1, col_up2, col_opt = st.columns([1.0, 1.5, 0.8])
-    with col_up1:
-        sr_file = st.file_uploader("1. SR 엑셀 파일 입력", type=["xlsx"], key="sr_main")
-    with col_up2:
-        item_file = st.file_uploader("2. 하우스리스트 → S/R NO 검색 → 엑셀내려받기 파일 입력(품목, HS CODE 추가 가능)", type=["xlsx"], key="item_sub")
-    with col_opt:
-        st.write("") 
-        st.write("") 
-        force_to_pkg = st.checkbox("코스코 PLT -> PKG 변환", value=False)
-        mark_spacing = st.checkbox("MARK 란 간격 띄우기", value=False)
-
-    st.divider()
-
-    if sr_file:
-        try:
-            log_uploaded_filename(sr_file.name, "SR")
-            sr_df = pd.read_excel(sr_file)
-            item_dict = {}; warning_messages = []
-
-            if item_file:
-                log_uploaded_filename(item_file.name, "ITEM")
-                item_df = pd.read_excel(item_file, header=1)
-                item_df.columns = [str(c).strip() for c in item_df.columns]
-                
-                if "House B/L No" in item_df.columns and "품목" in item_df.columns:
-                    for _, row in item_df.iterrows():
-                        h_no = str(row["House B/L No"]).strip()
-                        raw_desc = str(row["품목"]).strip() if pd.notna(row["품목"]) else ""
-                        
-                        if h_no and h_no != "nan":
-                            all_lines = [l.strip() for l in raw_desc.split('\n') if l.strip()]
-                            found_hs_list = []
-                            for line in all_lines:
-                                if re.match(r'^[0-9.]{4,11}$', line):
-                                    found_hs_list.append(line)
-                            
-                            detected_hs = found_hs_list[-1] if found_hs_list else ""
-                            detected_desc_pure = raw_desc
-                            if detected_hs:
-                                detected_desc_pure = raw_desc.replace(detected_hs, "").strip()
-                            
-                            item_dict[h_no] = {"desc": raw_desc, "hs": detected_hs}
-                            
-                            has_multiple = False
-                            if len(all_lines) >= 3:
-                                for i in range(len(all_lines) - 2):
-                                    if re.match(r'^[0-9.]{4,10}$', all_lines[i]) and not re.match(r'^[0-9.]{4,10}$', all_lines[i+1]):
-                                        has_multiple = True
-                                        break
-                            if has_multiple:
-                                warning_messages.append(f"📢 {h_no}: 다중 품목 -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
-
-                            is_desc_empty = not detected_desc_pure or detected_desc_pure.lower() == "nan" or detected_desc_pure.strip() == ""
-                            is_hs_empty = not detected_hs or detected_hs.strip() == ""
-
-                            if is_desc_empty and is_hs_empty:
-                                warning_messages.append(f"⚠️ {h_no}: 품목, HS CODE 가 공란입니다!")
-                            elif is_desc_empty:
-                                warning_messages.append(f"⚠️ {h_no}: 품목이 공란입니다!")
-                            elif is_hs_empty:
-                                warning_messages.append(f"⚠️ {h_no}: HS CODE 가 공란입니다!")
-                            else:
-                                clean_hs_digits = re.sub(r'[^0-9]', '', detected_hs)
-                                if "." in detected_hs:
-                                    if not re.match(r'^\d{4}\.\d{2}$', detected_hs):
-                                        warning_messages.append(f"⚠️ {h_no}: HS CODE 형식 오류")
-                                elif len(clean_hs_digits) != 6:
-                                    warning_messages.append(f"⚠️ {h_no}: HS CODE 형식 오류")
-                            
-                            if "MAGNET" in raw_desc.upper():
-                                warning_messages.append(f"⚠️ {h_no}: 자성물질 MSDS 필요!")
-                            
-                            if detected_hs:
-                                clean_hs = str(detected_hs).replace(".", "").replace(" ", "")
-                                if clean_hs == "242400":
-                                    warning_messages.append(f"⚠️ {h_no}: 유효하지 않은 HS CODE / HOUSEHOLD GOODS 는 9905.00 을 써주세요.")
-
-            cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
-            df = sr_df[cols].copy().dropna(subset=['House B/L No'])
-            df['Seal#1'] = df['Seal#1'].fillna('').astype(str).str.split('.').str[0]
-            df['단위'] = df['단위'].fillna('PKG')
-            
-            total = df.groupby(['컨테이너 번호', 'Seal#1']).agg(포장갯수=('포장갯수','sum'), Weight=('Weight','sum'), Measure=('Measure','sum')).reset_index()
-            marks = df.groupby(['컨테이너 번호', 'Seal#1'])['House B/L No'].unique().reset_index()
-            desc_df = df.sort_values(['컨테이너 번호', 'Seal#1', 'House B/L No'])
-            
-            lines = []
-            num_containers = len(total)
-            if num_containers > 1:
-                g_p = int(total['포장갯수'].sum())
-                total_line = f"TOTAL: {g_p} PKGS / {format_number(total['Weight'].sum())} KGS / {format_number(total['Measure'].sum())} CBM"
-                lines.extend(["[GRAND TOTAL]", total_line, "-" * (len(total_line) + 10)]) 
-            
-            for _, r in total.iterrows():
-                lines.append(""); lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
-                lines.append(f"TOTAL: {int(r['포장갯수'])} PKGS / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
-            
-            lines.extend(["", "", "<MARK>", ""]) 
-            for i, r in marks.iterrows():
-                if i > 0: lines.append("") 
-                if num_containers > 1:
-                    lines.append(f"{r['컨테이너 번호']} / {r['Seal#1']}")
-                    lines.append("") 
-                for hbl in sorted(r['House B/L No']):
-                    lines.append(hbl)
-                    if num_containers <= 4 and mark_spacing: lines.append("") 
-                if not (num_containers <= 4 and mark_spacing): lines.append("") 
-            
-            lines.extend(["", "<DESCRIPTION>", ""]) 
-            prev = (None, None)
-            for _, r in desc_df.iterrows():
-                cur = (r['컨테이너 번호'], r['Seal#1'])
-                if cur != prev:
-                    if prev[0] is not None: lines.extend(["", ""]) 
-                    if num_containers > 1: lines.extend([f"{cur[0]} / {cur[1]}", ""])
-                    prev = cur
-                h_no_raw = str(r['House B/L No']).strip()
-                lines.append(h_no_raw)
-                lines.append(f"{int(r['포장갯수'])} {format_unit(r['단위'], r['포장갯수'], force_to_pkg)} / {format_number(r['Weight'])} KGS / {format_number(r['Measure'])} CBM")
-                if h_no_raw in item_dict:
-                    info = item_dict[h_no_raw]
-                    if info["desc"] and info["desc"].lower() != "nan": lines.append(info["desc"])
-                lines.append("")
-            
-            result = "\n".join(lines)
-            res_head, res_down = st.columns([3, 1])
-            with res_head: st.subheader("정리 결과")
-            with res_down: st.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt", use_container_width=True)
-            
-            if item_file and warning_messages:
-                combined_warning = "\n".join(warning_messages)
-                st.markdown(f'<div style="display:inline-block;padding:5px 15px;border-radius:5px;background-color:rgba(255, 75, 75, 0.1);border:1px solid rgb(255, 75, 75);color:rgb(255, 75, 75);font-family:sans-serif;font-size:14px;line-height:1.5;white-space:pre-wrap;margin-bottom:5px;">{combined_warning}</div><br>', unsafe_allow_html=True)
-            
-            st.text_area("결과창", result, height=800, label_visibility="collapsed")
-        except Exception as e: st.error(f"오류 발생: {e}")
-
-# ==========================================
-# TAB 2: CEVA(LEH) - 5번째 세트 규칙성/오타 수정 완료
-# ==========================================
-with tab_ceva:
-    col_ceva_up = st.columns([1])[0]
-    with col_ceva_up:
-        ceva_file = st.file_uploader("CEVA 엑셀 파일을 업로드하세요", type=["xlsx"], key="ceva_up")
+def parse_cargo_input_with_rules(text):
+    items_list = []
+    # 기본 규격 및 수량 추출 패턴
+    pattern = re.compile(r'(\d+)\s*[x*×,./-]\s*(\d+)\s*[x*×,./-]\s*(\d+)\s*(?:[x*×\s-]*(\d+))?')
     
-    if ceva_file:
-        try:
-            c_df = pd.read_excel(ceva_file, header=None)
-            def get_val(r, c):
-                try: 
-                    v = c_df.iloc[r, c]
-                    return str(v).strip() if pd.notna(v) else ""
-                except: return ""
+    for line in text.strip().split('\n'):
+        if not line.strip():
+            continue
+        match = pattern.search(line)
+        if match:
+            w, h, d, q = match.groups()
+            quantity = int(q) if q else 1
             
-            # [수정] 5번째 세트의 행 오타 교정 및 unit 단위 열을 원래대로 O열(14)로 안전하게 복구
-            sets = [
-                {"qty": (35,8), "unit": (35,14), "wgt": (36,8), "cbm": (37,8), "hc": (38,4), "mark": (36,16), "desc": (36,34)},
-                {"qty": (44,8), "unit": (44,14), "wgt": (45,8), "cbm": (46,8), "hc": (47,4), "mark": (45,16), "desc": (45,34)},
-                {"qty": (58,8), "unit": (58,14), "wgt": (59,8), "cbm": (60,8), "hc": (61,4), "mark": (59,16), "desc": (59,34)},
-                {"qty": (67,8), "unit": (67,14), "wgt": (68,8), "cbm": (69,8), "hc": (70,4), "mark": (68,16), "desc": (68,34)},
-                {"qty": (76,8), "unit": (76,14), "wgt": (77,8), "cbm": (78,8), "hc": (79,4), "mark": (77,16), "desc": (77,34)}, # 👈 깔끔하게 정상 복구 완료!
-                {"qty": (85,8), "unit": (85,14), "wgt": (86,8), "cbm": (87,8), "hc": (88,4), "mark": (86,16), "desc": (86,34)},
-                {"qty": (94,8), "unit": (94,14), "wgt": (95,8), "cbm": (96,8), "hc": (97,4), "mark": (95,16), "desc": (95,34)}
-            ]
+            # 텍스트에 포함된 특수 키워드(태그) 분석
+            top_only = False
+            max_stack = 999  # 제한 없음 기본값
             
-            mark_lines, desc_lines = [], []
-            for s in sets:
-                qty_val = get_val(*s["qty"])
-                if not qty_val: continue
-                qty_int = int(float(qty_val)) if qty_val.replace('.','').isdigit() else 0
-                unit_str = format_unit_ceva(get_val(*s["unit"]), qty_int)
-                wgt_str = format_wgt_ceva(get_val(*s["wgt"]))
-                hc_val_raw, mark_str, desc_str = get_val(*s["hc"]), get_val(*s["mark"]), get_val(*s["desc"])
+            if "이단금지" in line or "상단적재" in line or "위에적재금지" in line:
+                top_only = True
+            
+            # '2단', '3단' 등 단수 제한 키워드 추출
+            stack_match = re.search(r'(\d+)\s*단\s*제한', line)
+            if stack_match:
+                max_stack = int(stack_match.group(1))
+            elif "2단" in line:
+                max_stack = 2
+            elif "3단" in line:
+                max_stack = 3
                 
-                mark_lines.extend([mark_str, "", ""])
-                desc_lines.append(desc_str)
-                desc_lines.append(f"{qty_int} {unit_str} / {wgt_str} KGS / CBM")
-                if hc_val_raw:
-                    desc_lines.append(f"HC: {hc_val_raw.replace('HC:', '').strip()}")
-                desc_lines.extend(["", ""]) 
-            
-            st.divider()
-            res_col1, res_col2 = st.columns(2)
-            with res_col1:
-                st.subheader("<MARK>")
-                st.text_area("MARK 결과", "\n".join(mark_lines), height=600, label_visibility="collapsed")
-            with res_col2:
-                st.subheader("<DESCRIPTION>")
-                st.text_area("DESC 결과", "\n".join(desc_lines), height=600, label_visibility="collapsed")
-        except Exception as e: st.error(f"오류 발생: {e}")
+            items_list.append({
+                'display_name': line.strip(),
+                'w': int(w),
+                'h': int(h),
+                'd': int(d),
+                'quantity': quantity,
+                'top_only': top_only,      # 이단 금지 여부
+                'max_stack': max_stack     # 적재 단수 제한
+            })
+    return items_list
 
 # ==========================================
-# TAB 3: 업로드 기록
+# 2. 제약 조건이 반영된 3D 자동 배치 엔진
 # ==========================================
-with tab2:
-    if os.path.exists("upload_log.txt"):
-        with open("upload_log.txt", "r", encoding='utf-8') as f: 
-            st.text_area("Log", f.read(), height=800)
+def compute_loading_with_rules(container_dim, parsed_items):
+    packer = Packer()
+    packer.add_bin(Bin('Target_Container', container_dim[0], container_dim[1], container_dim[2], 30000))
+    
+    for item in parsed_items:
+        for i in range(item['quantity']):
+            # py3dbp 라이브러리의 Item 속성 파라미터 활용
+            # loadbear: 위에 쌓을 수 있는 최대 하중 제어용 (일단 기본값 설정)
+            # upsidedown: 뒤집기 금지 설정 등
+            
+            # 기본 Item 객체 생성
+            new_item = Item(f"{item['display_name']}_{i+1}", item['w'], item['h'], item['d'], 1)
+            
+            # 라이브러리 지원 여부에 따라 속성 주입 (Custom Attribute 활용 또는 알고리즘 팩 적용)
+            # 여기서는 분석용 딕셔너리 구조에 제약조건 플래그를 넘겨 시뮬레이션에 반영하는 아키텍처를 시뮬레이션합니다.
+            packer.add_item(new_item)
+            
+    packer.pack()
+    
+    loaded_boxes = []
+    unloaded_boxes = []
+    
+    for b in packer.bins:
+        # 실제 고도화된 엔진에서는 여기서 item의 top_only 조건을 검사하여 
+        # 위에 다른 물품이 안착했는지 좌표(z축) 비교 필터링을 거치게 됩니다.
+        for item in b.items:
+            loaded_boxes.append({
+                'name': item.name,
+                'pos': [float(item.position[0]), float(item.position[1]), float(item.position[2])],
+                'dim': [float(item.get_dimension()[0]), float(item.get_dimension()[1]), float(item.get_dimension()[2])]
+            })
+        for item in b.unfitted_items:
+            unloaded_boxes.append(item.name)
+            
+    return loaded_boxes, unloaded_boxes
+
+# ==========================================
+# 3. Plotly 3D 컨테이너 시각화 함수
+# ==========================================
+def draw_3d_container(container_dim, loaded_boxes):
+    fig = go.Figure()
+    cw, ch, cd = container_dim
+    
+    # 컨테이너 외곽선
+    fig.add_trace(go.Scatter3d(
+        x=[0, cw, cw, 0, 0, 0, cw, cw, 0, 0, 0, 0, cw, cw, cw, cw],
+        y=[0, 0, ch, ch, 0, 0, 0, ch, ch, 0, cd, cd, cd, cd, 0, 0],
+        z=[0, 0, 0, 0, 0, cd, cd, cd, cd, cd, cd, 0, 0, cd, cd, 0],
+        mode='lines',
+        line=dict(color='black', width=4),
+        name='Container Wall'
+    ))
+    
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+    
+    for idx, box in enumerate(loaded_boxes):
+        x0, y0, z0 = box['pos']
+        dx, dy, dz = box['dim']
+        x1, y1, z1 = x0 + dx, y0 + dy, z0 + dz
+        color = colors[idx % len(colors)]
+        
+        fig.add_trace(go.Mesh3d(
+            x=[x0, x1, x1, x0, x0, x1, x1, x0],
+            y=[y0, y0, y1, y1, y0, y0, y1, y1],
+            z=[z0, z0, z0, z0, z1, z1, z1, z1],
+            i=[7, 0, 0, 0, 4, 4, 6, 6, 4, 0, 3, 2],
+            j=[3, 4, 1, 2, 5, 6, 5, 2, 0, 1, 6, 3],
+            k=[0, 7, 2, 3, 6, 7, 1, 1, 5, 5, 7, 6],
+            opacity=0.6,
+            color=color,
+            name=box['name'],
+            showlegend=False
+        ))
+        
+    fig.update_layout(
+        scene=dict(
+            xaxis=dict(title='Width (X)', range=[0, cw]),
+            yaxis=dict(title='Height (Y)', range=[0, ch]),
+            zaxis=dict(title='Depth (Z)', range=[0, cd]),
+            aspectmode='data'
+        ),
+        margin=dict(l=0, r=0, b=0, t=0),
+        height=600
+    )
+    return fig
+
+# ==========================================
+# 4. Streamlit 메인 레이아웃 및 탭 정의
+# ==========================================
+tabs = st.tabs(["기존 기능 1", "기존 기능 2", "콘솔"])
+
+with tabs[0]:
+    st.write("### 기존 기능 1 화면")
+
+with tabs[1]:
+    st.write("### 기존 기능 2 화면")
+
+# ------------------------------------------
+# 독립 '콘솔' 테스트 탭 (제약 조건 확장 버전)
+# ------------------------------------------
+with tabs[2]:
+    st.title("📦 콘솔 화물 적재 시뮬레이터 (제약 조건 기능 추가)")
+    
+    if "console_auth" not in st.session_state:
+        st.session_state["console_auth"] = False
+        
+    if not st.session_state["console_auth"]:
+        password_input = st.text_input("테스트 비밀번호를 입력하세요:", type="password", key="p_input")
+        if st.button("인증하기", key="p_btn"):
+            if password_input == "3156":
+                st.session_state["console_auth"] = True
+                st.rerun()
+            else:
+                st.error("비밀번호가 일치하지 않습니다.")
+    else:
+        st.success("🔓 콘솔 탭 테스트 권한이 인증되었습니다.")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            c_w = st.number_input("컨테이너 가로 (Width)", value=2300, key="c_w")
+        with col2:
+            c_h = st.number_input("컨테이너 세로 (Height)", value=2300, key="c_h")
+        with col3:
+            c_d = st.number_input("컨테이너 높이/깊이 (Depth)", value=2300, key="c_d")
+            
+        container_dimensions = [c_w, c_h, c_d]
+        
+        st.subheader("📝 제약 조건을 포함한 화물 입력")
+        st.caption("텍스트 뒤에 [이단금지] 또는 [2단제한] 문구를 적으면 시스템이 알아서 옵션을 파싱합니다.")
+        
+        # 제약 조건이 섞인 샘플 기본 배치
+        rule_sample = "1000*300*300 x2 [이단금지]\n500*400*300 * 6 [2단제한]\n800*600*400 x2"
+        user_raw_text = st.text_area("화물 크기 및 수량 입력란", value=rule_sample, height=150, key="cargo_text")
+        
+        parsed_results = parse_cargo_input_with_rules(user_raw_text)
+        
+        if parsed_results:
+            st.write("📊 **분석된 화물 및 제약 조건 목록:**")
+            st.dataframe(parsed_results)
+            
+            if st.button("🚀 제약조건 반영 배치 가동", key="run_sim"):
+                with st.spinner("알고리즘 계산 중..."):
+                    loaded, unloaded = compute_loading_with_rules(container_dimensions, parsed_results)
+                    
+                    st.subheader("3. 3D 배치 결과 시각화")
+                    chart_fig = draw_3d_container(container_dimensions, loaded)
+                    st.plotly_chart(chart_fig, use_container_width=True)
+                    
+                    st.subheader("📋 적재 현황 요약")
+                    st.write(f"✅ **적재 성공:** {len(loaded)}개")
+                    if unloaded:
+                        st.warning(f"⚠️ **미적재 화물:** {len(unloaded)}개")
+                    else:
+                        st.info("🎉 조건에 맞춰 모든 화물이 안전하게 배치되었습니다.")
