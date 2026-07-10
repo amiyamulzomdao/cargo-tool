@@ -54,7 +54,7 @@ st.title("🚢 Europe Docs tool")
 tab1, tab_ceva, tab2 = st.tabs(["SR 정정", "CEVA(LEH)", "업로드 기록"])
 
 # ==========================================
-# TAB 1: SR 정정 (Cargo Tool 5 - 대원칙 보존 / 수정 없음 0%)
+# TAB 1: SR 정정 (Cargo Tool 5 - 대원칙 보존)
 # ==========================================
 with tab1:
     col_up1, col_up2, col_opt = st.columns([1.0, 1.5, 0.8])
@@ -75,6 +75,16 @@ with tab1:
             log_uploaded_filename(sr_file.name, "SR")
             sr_df = pd.read_excel(sr_file)
             item_dict = {}; warning_messages = []
+
+            # --- [신규] SR 기본 데이터 자체 검증 구간 (단위 GT 체크용) ---
+            # House B/L No와 단위 컬럼이 존재할 때 검증 수행
+            if "House B/L No" in sr_df.columns and "단위" in sr_df.columns:
+                for _, row in sr_df.iterrows():
+                    h_no_sr = str(row["House B/L No"]).strip()
+                    unit_sr = str(row["단위"]).strip().upper() if pd.notna(row["단위"]) else ""
+                    if h_no_sr and h_no_sr != "nan":
+                        if unit_sr == "GT":
+                            warning_messages.append(f"⚠️ {h_no_sr}: 단위 GT 로 재확인 부탁드립니다")
 
             if item_file:
                 log_uploaded_filename(item_file.name, "ITEM")
@@ -186,7 +196,7 @@ with tab1:
             with res_head: st.subheader("정리 결과")
             with res_down: st.download_button("💾 메모장 다운로드", result, f"SR_{sr_file.name.split('.')[0]}.txt", use_container_width=True)
             
-            if item_file and warning_messages:
+            if warning_messages:
                 combined_warning = "\n".join(warning_messages)
                 st.markdown(f'<div style="display:inline-block;padding:5px 15px;border-radius:5px;background-color:rgba(255, 75, 75, 0.1);border:1px solid rgb(255, 75, 75);color:rgb(255, 75, 75);font-family:sans-serif;font-size:14px;line-height:1.5;white-space:pre-wrap;margin-bottom:5px;">{combined_warning}</div><br>', unsafe_allow_html=True)
             
@@ -194,7 +204,7 @@ with tab1:
         except Exception as e: st.error(f"오류 발생: {e}")
 
 # ==========================================
-# TAB 2: CEVA(LEH) - 5번째 세트 규칙성/오타 수정 완료
+# TAB 2: CEVA(LEH)
 # ==========================================
 with tab_ceva:
     col_ceva_up = st.columns([1])[0]
@@ -210,13 +220,12 @@ with tab_ceva:
                     return str(v).strip() if pd.notna(v) else ""
                 except: return ""
             
-            # [수정] 5번째 세트의 행 오타 교정 및 unit 단위 열을 원래대로 O열(14)로 안전하게 복구
             sets = [
                 {"qty": (35,8), "unit": (35,14), "wgt": (36,8), "cbm": (37,8), "hc": (38,4), "mark": (36,16), "desc": (36,34)},
                 {"qty": (44,8), "unit": (44,14), "wgt": (45,8), "cbm": (46,8), "hc": (47,4), "mark": (45,16), "desc": (45,34)},
                 {"qty": (58,8), "unit": (58,14), "wgt": (59,8), "cbm": (60,8), "hc": (61,4), "mark": (59,16), "desc": (59,34)},
                 {"qty": (67,8), "unit": (67,14), "wgt": (68,8), "cbm": (69,8), "hc": (70,4), "mark": (68,16), "desc": (68,34)},
-                {"qty": (76,8), "unit": (76,14), "wgt": (77,8), "cbm": (78,8), "hc": (79,4), "mark": (77,16), "desc": (77,34)}, # 👈 깔끔하게 정상 복구 완료!
+                {"qty": (76,8), "unit": (76,14), "wgt": (77,8), "cbm": (78,8), "hc": (79,4), "mark": (77,16), "desc": (77,34)},
                 {"qty": (85,8), "unit": (85,14), "wgt": (86,8), "cbm": (87,8), "hc": (88,4), "mark": (86,16), "desc": (86,34)},
                 {"qty": (94,8), "unit": (94,14), "wgt": (95,8), "cbm": (96,8), "hc": (97,4), "mark": (95,16), "desc": (95,34)}
             ]
