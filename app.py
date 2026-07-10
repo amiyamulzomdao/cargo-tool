@@ -76,15 +76,14 @@ with tab1:
             sr_df = pd.read_excel(sr_file)
             item_dict = {}; warning_messages = []
 
-            # --- [신규] SR 기본 데이터 자체 검증 구간 (단위 GT 체크용) ---
-            # House B/L No와 단위 컬럼이 존재할 때 검증 수행
+            # --- SR 기본 데이터 자체 검증 구간 (단위 GT 체크용) ---
             if "House B/L No" in sr_df.columns and "단위" in sr_df.columns:
                 for _, row in sr_df.iterrows():
                     h_no_sr = str(row["House B/L No"]).strip()
                     unit_sr = str(row["단위"]).strip().upper() if pd.notna(row["단위"]) else ""
                     if h_no_sr and h_no_sr != "nan":
                         if unit_sr == "GT":
-                            warning_messages.append(f"⚠️ {h_no_sr}: 단위 GT 로 재확인 부탁드립니다")
+                            warning_messages.append(f"⚠️ {h_no_sr}: 단위가 GT 입니다.")
 
             if item_file:
                 log_uploaded_filename(item_file.name, "ITEM")
