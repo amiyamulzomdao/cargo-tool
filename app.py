@@ -271,7 +271,7 @@ with tab_ceva:
 with tab_history:
     col_pod, col_query, col_btn = st.columns([1, 1.8, 0.5])
     with col_pod:
-        selected_pod_opt = st.selectbox("POD 선택", POD_OPTIONS, index=0) # 기본값: 전체 (ALL)
+        selected_pod_opt = st.selectbox("POD 선택", POD_OPTIONS, index=0)
         
         if "ALL" in selected_pod_opt:
             pod_code = "ALL"
@@ -287,7 +287,6 @@ with tab_history:
     
     st.divider()
 
-    # --- 선적이력 탭 전용 키워드/HS CODE 기반 경고 메시지 감지 알고리즘 ---
     if search_query.strip():
         search_upper = search_query.strip().upper()
         search_digits = re.sub(r'[^0-9]', '', search_upper)
@@ -312,7 +311,6 @@ with tab_history:
             combined_hist_warning = "\n".join(history_warnings)
             st.markdown(f'<div style="display:inline-block;padding:5px 15px;border-radius:5px;background-color:rgba(255, 75, 75, 0.1);border:1px solid rgb(255, 75, 75);color:rgb(255, 75, 75);font-family:sans-serif;font-size:14px;line-height:1.5;white-space:pre-wrap;margin-bottom:15px;">{combined_hist_warning}</div><br>', unsafe_allow_html=True)
 
-    # 스캔할 파일 대상 목록 구성
     files_to_scan = []
     if pod_code == "ALL":
         for country, code in POD_LIST:
@@ -394,17 +392,18 @@ with tab_history:
                 st.subheader(f"🔍 검색 결과 ({len(out_df)}건)")
                 
                 cfg = {
-                    "House B/L No": st.column_config.TextColumn("House B/L No", width="medium"),
-                    "ETD": st.column_config.TextColumn("ETD", width="small"),
-                    "품목": st.column_config.TextColumn("품목", width="large"),
+                    "House B/L No": st.column_config.TextColumn("House B/L No", width=160),
+                    "ETD": st.column_config.TextColumn("ETD", width=110),
+                    "품목": st.column_config.TextColumn("품목", width=400),
                 }
                 if pod_code == "ALL":
-                    cfg = {"POD": st.column_config.TextColumn("POD", width="small"), **cfg}
+                    cfg = {"POD": st.column_config.TextColumn("POD", width=90), **cfg}
                     
+                # use_container_width=False로 설정하여 쓸데없이 전체 폭으로 늘어나지 않고 타이트하게 표시
                 st.dataframe(
                     out_df,
                     column_config=cfg,
-                    use_container_width=True,
+                    use_container_width=False,
                     height=500
                 )
             else:
