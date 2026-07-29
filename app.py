@@ -47,12 +47,12 @@ def format_wgt_ceva(v):
     except:
         return str(v)
 
-# --- POD 정의 ---
+# --- POD 정의 (알파벳 순 정렬) ---
 POD_LIST = [
-    ("영국", "GBSOU"), ("스웨덴", "SEGOT"), ("노르웨이", "NOOSL"), ("덴마크", "DKAAR"),
-    ("독일", "DEHAM"), ("루마니아", "ROCND"), ("이탈리아", "ITGOA"), ("터키", "TRIST"),
-    ("네덜란드", "NLRTM"), ("벨기에", "BEANR"), ("스페인", "ESBCN"), ("프랑스", "FRLEH"),
-    ("프랑스", "FRFOS"), ("폴란드", "PLGDN"), ("슬로베니아", "SIKOP")
+    ("벨기에", "BEANR"), ("독일", "DEHAM"), ("덴마크", "DKAAR"), ("스페인", "ESBCN"),
+    ("프랑스", "FRFOS"), ("프랑스", "FRLEH"), ("영국", "GBSOU"), ("이탈리아", "ITGOA"),
+    ("네덜란드", "NLRTM"), ("노르웨이", "NOOSL"), ("폴란드", "PLGDN"), ("루마니아", "ROCND"),
+    ("스웨덴", "SEGOT"), ("슬로베니아", "SIKOP"), ("터키", "TRIST")
 ]
 POD_OPTIONS = [f"{country} ({code})" for country, code in POD_LIST]
 
@@ -270,12 +270,14 @@ with tab_ceva:
 with tab_history:
     col_pod, col_query, col_btn = st.columns([1, 1.8, 0.5])
     with col_pod:
-        selected_pod_opt = st.selectbox("POD 선택", POD_OPTIONS, index=13) # 기본값: 폴란드 (PLGDN)
+        # POD 목록이 알파벳순으로 정렬됨 (PLGDN 위치 자동 지정)
+        plgdn_idx = [i for i, opt in enumerate(POD_OPTIONS) if "PLGDN" in opt][0]
+        selected_pod_opt = st.selectbox("POD 선택", POD_OPTIONS, index=plgdn_idx)
         pod_code = selected_pod_opt.split("(")[-1].replace(")", "").strip()
     with col_query:
         search_query = st.text_input("HS CODE 또는 품목명 검색", placeholder="예: AUTOMOTIVE, 844391, 8443.91, BAR 등")
     with col_btn:
-        st.write("") # 높이 맞춤용
+        st.write("") 
         st.write("")
         search_btn = st.button("🔍 검색", use_container_width=True)
     
@@ -320,10 +322,9 @@ with tab_history:
                 res_df.columns = ['House B/L No', 'ETD', '품목']
                 res_df = res_df.dropna(subset=['House B/L No'])
                 
-                # 검색어가 있고 (Enter키 누름) 또는 검색 버튼 클릭 시
                 if search_query.strip():
                     q_raw = search_query.strip().upper()
-                    q_digits = re.sub(r'[^0-9]', '', q_raw) # 점 제거된 숫자
+                    q_digits = re.sub(r'[^0-9]', '', q_raw)
                     
                     matched_rows = []
                     for _, r in res_df.iterrows():
@@ -332,10 +333,8 @@ with tab_history:
                         item_digits = re.sub(r'[^0-9]', '', item_val)
                         
                         is_match = False
-                        # 1. HS CODE 숫자 매칭 (점 유무 상관없이 4자리 이상일 때 숫자 부분 매칭)
                         if len(q_digits) >= 4 and q_digits in item_digits:
                             is_match = True
-                        # 2. 품목명 텍스트 부분 매칭 (예: AUTOMOTIVE 입력 시 AUTOMOTIVE SEAT PARTS 검색 가능)
                         elif q_raw in item_upper:
                             is_match = True
                             
@@ -350,7 +349,18 @@ with tab_history:
                     if matched_rows:
                         out_df = pd.DataFrame(matched_rows)
                         st.subheader(f"🔍 검색 결과 ({len(out_df)}건)")
-                        st.dataframe(out_df, use_container_width=True, height=500)
+                        
+                        # 열 너비를 내용에 맞게 자동 조절하는 설정
+                        st.dataframe(
+                            out_df,
+                            column_config={
+                                "House B/L No": st.column_config.TextColumn("House B/L No", width="medium"),
+                                "ETD": st.column_config.TextColumn("ETD", width="small"),
+                                "품목": st.column_config.TextColumn("품목", width="large"),
+                            },
+                            use_container_width=True,
+                            height=500
+                        )
                     else:
                         st.info("검색 조건에 맞는 이력이 없습니다.")
                 else:
