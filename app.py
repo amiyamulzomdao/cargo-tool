@@ -47,14 +47,15 @@ def format_wgt_ceva(v):
     except:
         return str(v)
 
-# --- POD 정의 (알파벳 순 정렬) ---
+# --- POD 정의 (맨 위에 '전체 (ALL)' 추가) ---
 POD_LIST = [
+    ("전체", "ALL"),
     ("벨기에", "BEANR"), ("독일", "DEHAM"), ("덴마크", "DKAAR"), ("스페인", "ESBCN"),
     ("프랑스", "FRFOS"), ("프랑스", "FRLEH"), ("영국", "GBSOU"), ("이탈리아", "ITGOA"),
     ("네덜란드", "NLRTM"), ("노르웨이", "NOOSL"), ("폴란드", "PLGDN"), ("루마니아", "ROCND"),
     ("스웨덴", "SEGOT"), ("슬로베니아", "SIKOP"), ("터키", "TRIST")
 ]
-POD_OPTIONS = [f"{country} ({code})" for country, code in POD_LIST]
+POD_OPTIONS = [f"{country} ({code})" if code != "ALL" else "전체 (ALL)" for country, code in POD_LIST]
 
 # --- 2. 페이지 설정 ---
 st.set_page_config(page_title="Europe Docs tool (Cargo Tool 6)", layout="wide")
@@ -270,10 +271,13 @@ with tab_ceva:
 with tab_history:
     col_pod, col_query, col_btn = st.columns([1, 1.8, 0.5])
     with col_pod:
-        # POD 목록이 알파벳순으로 정렬됨 (PLGDN 위치 자동 지정)
-        plgdn_idx = [i for i, opt in enumerate(POD_OPTIONS) if "PLGDN" in opt][0]
-        selected_pod_opt = st.selectbox("POD 선택", POD_OPTIONS, index=plgdn_idx)
-        pod_code = selected_pod_opt.split("(")[-1].replace(")", "").strip()
+        selected_pod_opt = st.selectbox("POD 선택", POD_OPTIONS, index=0) # 기본값: 전체 (ALL)
+        
+        if "ALL" in selected_pod_opt:
+            pod_code = "ALL"
+        else:
+            pod_code = selected_pod_opt.split("(")[-1].replace(")", "").strip()
+            
     with col_query:
         search_query = st.text_input("HS CODE 또는 품목명 검색", placeholder="예: AUTOMOTIVE, 844391, 8443.91, BAR 등")
     with col_btn:
@@ -283,94 +287,107 @@ with tab_history:
     
     st.divider()
     
-    possible_files = [f"{pod_code}.xlsx"]
-    if pod_code == "PLGDN":
-        possible_files.append("GDN.xlsx")
-    
-    target_file = None
-    for pf in possible_files:
-        if os.path.exists(pf):
-            target_file = pf
-            break
-            
-    if target_file:
-        try:
-            raw_df = pd.read_excel(target_file)
-            
-            header_row_idx = None
-            if "House B/L No" in raw_df.columns:
-                hist_df = raw_df
-            else:
-                for idx in range(min(5, len(raw_df))):
-                    row_vals = [str(v).strip() for v in raw_df.iloc[idx].values]
-                    if any("House B/L" in v for v in row_vals):
-                        header_row_idx = idx
-                        break
-                if header_row_idx is not None:
-                    hist_df = pd.read_excel(target_file, header=header_row_idx + 1)
-                else:
-                    hist_df = raw_df
-
-            hist_df.columns = [str(c).strip() for c in hist_df.columns]
-            
-            hbl_col = next((c for c in hist_df.columns if "House B/L" in c), None)
-            etd_col = next((c for c in hist_df.columns if "ETD" in c), None)
-            item_col = next((c for c in hist_df.columns if "품목" in c), None)
-            
-            if hbl_col and etd_col and item_col:
-                res_df = hist_df[[hbl_col, etd_col, item_col]].copy()
-                res_df.columns = ['House B/L No', 'ETD', '품목']
-                res_df = res_df.dropna(subset=['House B/L No'])
-                
-                if search_query.strip():
-                    q_raw = search_query.strip().upper()
-                    q_digits = re.sub(r'[^0-9]', '', q_raw)
-                    
-                    matched_rows = []
-                    for _, r in res_df.iterrows():
-                        item_val = str(r['품목']) if pd.notna(r['품목']) else ""
-                        item_upper = item_val.upper()
-                        item_digits = re.sub(r'[^0-9]', '', item_val)
-                        
-                        is_match = False
-                        if len(q_digits) >= 4 and q_digits in item_digits:
-                            is_match = True
-                        elif q_raw in item_upper:
-                            is_match = True
-                            
-                        if is_match:
-                            etd_str = str(r['ETD']).split(' ')[0] if pd.notna(r['ETD']) else ""
-                            matched_rows.append({
-                                'House B/L No': str(r['House B/L No']).strip(),
-                                'ETD': etd_str,
-                                '품목': item_val.strip()
-                            })
-                    
-                    if matched_rows:
-                        out_df = pd.DataFrame(matched_rows)
-                        st.subheader(f"🔍 검색 결과 ({len(out_df)}건)")
-                        
-                        # 열 너비를 내용에 맞게 자동 조절하는 설정
-                        st.dataframe(
-                            out_df,
-                            column_config={
-                                "House B/L No": st.column_config.TextColumn("House B/L No", width="medium"),
-                                "ETD": st.column_config.TextColumn("ETD", width="small"),
-                                "품목": st.column_config.TextColumn("품목", width="large"),
-                            },
-                            use_container_width=True,
-                            height=500
-                        )
-                    else:
-                        st.info("검색 조건에 맞는 이력이 없습니다.")
-                else:
-                    st.write("💡 HS CODE 또는 품목명을 입력 후 Enter를 누르거나 [🔍 검색] 버튼을 누르면 해당 POD의 진행 이력을 검색합니다.")
-            else:
-                st.error("엑셀 파일 내 'House B/L No', 'ETD', '품목' 열을 찾을 수 없습니다.")
-        except Exception as e:
-            st.error(f"이력 파일 읽기 오류: {e}")
+    # 스캔할 파일 대상 목록 구성
+    files_to_scan = []
+    if pod_code == "ALL":
+        for country, code in POD_LIST:
+            if code == "ALL": continue
+            pfile = f"{code}.xlsx"
+            if os.path.exists(pfile):
+                files_to_scan.append((code, pfile))
+            elif code == "PLGDN" and os.path.exists("GDN.xlsx"):
+                files_to_scan.append((code, "GDN.xlsx"))
     else:
-        st.warning(f"선택한 POD ({pod_code})의 저장된 이력 파일이 없습니다. (파일명: {pod_code}.xlsx 또는 GDN.xlsx)")
+        pfile = f"{pod_code}.xlsx"
+        if os.path.exists(pfile):
+            files_to_scan.append((pod_code, pfile))
+        elif pod_code == "PLGDN" and os.path.exists("GDN.xlsx"):
+            files_to_scan.append((pod_code, "GDN.xlsx"))
+            
+    if files_to_scan:
+        all_matched_rows = []
+        for cur_pod, target_file in files_to_scan:
+            try:
+                raw_df = pd.read_excel(target_file)
+                
+                header_row_idx = None
+                if "House B/L No" in raw_df.columns:
+                    hist_df = raw_df
+                else:
+                    for idx in range(min(5, len(raw_df))):
+                        row_vals = [str(v).strip() for v in raw_df.iloc[idx].values]
+                        if any("House B/L" in v for v in row_vals):
+                            header_row_idx = idx
+                            break
+                    if header_row_idx is not None:
+                        hist_df = pd.read_excel(target_file, header=header_row_idx + 1)
+                    else:
+                        hist_df = raw_df
+
+                hist_df.columns = [str(c).strip() for c in hist_df.columns]
+                
+                hbl_col = next((c for c in hist_df.columns if "House B/L" in c), None)
+                etd_col = next((c for c in hist_df.columns if "ETD" in c), None)
+                item_col = next((c for c in hist_df.columns if "품목" in c), None)
+                
+                if hbl_col and etd_col and item_col:
+                    res_df = hist_df[[hbl_col, etd_col, item_col]].copy()
+                    res_df.columns = ['House B/L No', 'ETD', '품목']
+                    res_df = res_df.dropna(subset=['House B/L No'])
+                    
+                    if search_query.strip():
+                        q_raw = search_query.strip().upper()
+                        q_digits = re.sub(r'[^0-9]', '', q_raw)
+                        
+                        for _, r in res_df.iterrows():
+                            item_val = str(r['품목']) if pd.notna(r['품목']) else ""
+                            item_upper = item_val.upper()
+                            item_digits = re.sub(r'[^0-9]', '', item_val)
+                            
+                            is_match = False
+                            if len(q_digits) >= 4 and q_digits in item_digits:
+                                is_match = True
+                            elif q_raw in item_upper:
+                                is_match = True
+                                
+                            if is_match:
+                                etd_str = str(r['ETD']).split(' ')[0] if pd.notna(r['ETD']) else ""
+                                item_dict = {
+                                    'House B/L No': str(r['House B/L No']).strip(),
+                                    'ETD': etd_str,
+                                    '품목': item_val.strip()
+                                }
+                                if pod_code == "ALL":
+                                    item_dict = {'POD': cur_pod, **item_dict}
+                                all_matched_rows.append(item_dict)
+            except Exception as e:
+                pass
+                
+        if search_query.strip():
+            if all_matched_rows:
+                out_df = pd.DataFrame(all_matched_rows)
+                st.subheader(f"🔍 검색 결과 ({len(out_df)}건)")
+                
+                cfg = {
+                    "House B/L No": st.column_config.TextColumn("House B/L No", width="medium"),
+                    "ETD": st.column_config.TextColumn("ETD", width="small"),
+                    "품목": st.column_config.TextColumn("품목", width="large"),
+                }
+                if pod_code == "ALL":
+                    cfg = {"POD": st.column_config.TextColumn("POD", width="small"), **cfg}
+                    
+                st.dataframe(
+                    out_df,
+                    column_config=cfg,
+                    use_container_width=True,
+                    height=500
+                )
+            else:
+                st.info("검색 조건에 맞는 이력이 없습니다.")
+        else:
+            st.write("💡 HS CODE 또는 품목명을 입력 후 Enter를 누르거나 [🔍 검색] 버튼을 누르면 해당 POD의 진행 이력을 검색합니다.")
+    else:
+        st.warning("저장된 이력 엑셀 파일이 없습니다. (루트 폴더에 포트코드.xlsx 파일을 넣어주세요)")
 
 # ==========================================
 # TAB 4: 업로드 기록
