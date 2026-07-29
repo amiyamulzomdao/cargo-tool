@@ -60,7 +60,8 @@ POD_OPTIONS = [f"{country} ({code})" for country, code in POD_LIST]
 st.set_page_config(page_title="Europe Docs tool (Cargo Tool 6)", layout="wide")
 st.title("🚢 Europe Docs tool")
 
-tab1, tab_ceva, tab_history, tab2 = st.tabs(["SR 정정", "CEVA(LEH)", "이력 검색", "업로드 기록"])
+# 탭 이름 변경: "선적이력"
+tab1, tab_ceva, tab_history, tab2 = st.tabs(["SR 정정", "CEVA(LEH)", "선적이력", "업로드 기록"])
 
 # ==========================================
 # TAB 1: SR 정정 (Cargo Tool 6 - 대원칙 보존)
@@ -265,7 +266,7 @@ with tab_ceva:
         except Exception as e: st.error(f"오류 발생: {e}")
 
 # ==========================================
-# TAB 3: 이력 검색 (신규 추가)
+# TAB 3: 선적이력 (신규 탭 이름 적용)
 # ==========================================
 with tab_history:
     col_pod, col_query = st.columns([1, 1.8])
@@ -277,14 +278,21 @@ with tab_history:
     
     st.divider()
     
-    # GDN 파일 자동 기억 로드 처리
-    target_file = f"{pod_code}.xlsx"
-    if os.path.exists(target_file):
+    # GDN.xlsx 파일 및 PLGDN.xlsx 파일 둘 다 인식하도록 처리
+    possible_files = [f"{pod_code}.xlsx"]
+    if pod_code == "PLGDN":
+        possible_files.append("GDN.xlsx")
+    
+    target_file = None
+    for pf in possible_files:
+        if os.path.exists(pf):
+            target_file = pf
+            break
+            
+    if target_file:
         try:
-            # 1행이 헤더인 파일 처리
             raw_df = pd.read_excel(target_file)
             
-            # 컬럼명 유연 추출 (유연성 확보)
             header_row_idx = None
             if "House B/L No" in raw_df.columns:
                 hist_df = raw_df
@@ -301,7 +309,6 @@ with tab_history:
 
             hist_df.columns = [str(c).strip() for c in hist_df.columns]
             
-            # 유연 컬럼 매핑
             hbl_col = next((c for c in hist_df.columns if "House B/L" in c), None)
             etd_col = next((c for c in hist_df.columns if "ETD" in c), None)
             item_col = next((c for c in hist_df.columns if "품목" in c), None)
@@ -350,7 +357,7 @@ with tab_history:
         except Exception as e:
             st.error(f"이력 파일 읽기 오류: {e}")
     else:
-        st.warning(f"선택한 POD ({pod_code})의 저장된 이력 파일({target_file})이 없습니다.")
+        st.warning(f"선택한 POD ({pod_code})의 저장된 이력 파일이 없습니다. (파일명: {pod_code}.xlsx 또는 GDN.xlsx)")
 
 # ==========================================
 # TAB 4: 업로드 기록
