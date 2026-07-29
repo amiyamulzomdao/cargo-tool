@@ -60,7 +60,6 @@ POD_OPTIONS = [f"{country} ({code})" for country, code in POD_LIST]
 st.set_page_config(page_title="Europe Docs tool (Cargo Tool 6)", layout="wide")
 st.title("🚢 Europe Docs tool")
 
-# 탭 이름 변경: "선적이력"
 tab1, tab_ceva, tab_history, tab2 = st.tabs(["SR 정정", "CEVA(LEH)", "선적이력", "업로드 기록"])
 
 # ==========================================
@@ -266,19 +265,22 @@ with tab_ceva:
         except Exception as e: st.error(f"오류 발생: {e}")
 
 # ==========================================
-# TAB 3: 선적이력 (신규 탭 이름 적용)
+# TAB 3: 선적이력
 # ==========================================
 with tab_history:
-    col_pod, col_query = st.columns([1, 1.8])
+    col_pod, col_query, col_btn = st.columns([1, 1.8, 0.5])
     with col_pod:
         selected_pod_opt = st.selectbox("POD 선택", POD_OPTIONS, index=13) # 기본값: 폴란드 (PLGDN)
         pod_code = selected_pod_opt.split("(")[-1].replace(")", "").strip()
     with col_query:
-        search_query = st.text_input("HS CODE 또는 품목명 검색", placeholder="예: 844391, 8443.91, BAR, PRINTER 등")
+        search_query = st.text_input("HS CODE 또는 품목명 검색", placeholder="예: AUTOMOTIVE, 844391, 8443.91, BAR 등")
+    with col_btn:
+        st.write("") # 높이 맞춤용
+        st.write("")
+        search_btn = st.button("🔍 검색", use_container_width=True)
     
     st.divider()
     
-    # GDN.xlsx 파일 및 PLGDN.xlsx 파일 둘 다 인식하도록 처리
     possible_files = [f"{pod_code}.xlsx"]
     if pod_code == "PLGDN":
         possible_files.append("GDN.xlsx")
@@ -318,6 +320,7 @@ with tab_history:
                 res_df.columns = ['House B/L No', 'ETD', '품목']
                 res_df = res_df.dropna(subset=['House B/L No'])
                 
+                # 검색어가 있고 (Enter키 누름) 또는 검색 버튼 클릭 시
                 if search_query.strip():
                     q_raw = search_query.strip().upper()
                     q_digits = re.sub(r'[^0-9]', '', q_raw) # 점 제거된 숫자
@@ -329,10 +332,10 @@ with tab_history:
                         item_digits = re.sub(r'[^0-9]', '', item_val)
                         
                         is_match = False
-                        # 1. HS CODE 숫자 매칭 (점 유무 상관없이 검색 가능)
+                        # 1. HS CODE 숫자 매칭 (점 유무 상관없이 4자리 이상일 때 숫자 부분 매칭)
                         if len(q_digits) >= 4 and q_digits in item_digits:
                             is_match = True
-                        # 2. 품목명 텍스트 매칭
+                        # 2. 품목명 텍스트 부분 매칭 (예: AUTOMOTIVE 입력 시 AUTOMOTIVE SEAT PARTS 검색 가능)
                         elif q_raw in item_upper:
                             is_match = True
                             
@@ -351,7 +354,7 @@ with tab_history:
                     else:
                         st.info("검색 조건에 맞는 이력이 없습니다.")
                 else:
-                    st.write("💡 HS CODE 또는 품목명을 입력하면 해당 POD의 진행 이력을 검색합니다.")
+                    st.write("💡 HS CODE 또는 품목명을 입력 후 Enter를 누르거나 [🔍 검색] 버튼을 누르면 해당 POD의 진행 이력을 검색합니다.")
             else:
                 st.error("엑셀 파일 내 'House B/L No', 'ETD', '품목' 열을 찾을 수 없습니다.")
         except Exception as e:
