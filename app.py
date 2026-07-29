@@ -279,14 +279,39 @@ with tab_history:
             pod_code = selected_pod_opt.split("(")[-1].replace(")", "").strip()
             
     with col_query:
-        search_query = st.text_input("HS CODE 또는 품목명 검색", placeholder="예: AUTOMOTIVE, 844391, 8443.91, BAR 등")
+        search_query = st.text_input("HS CODE 또는 품목명 검색", placeholder="예: AUTOMOTIVE, 844391, 2008.99, MAGNET 등")
     with col_btn:
         st.write("") 
         st.write("")
         search_btn = st.button("🔍 검색", use_container_width=True)
     
     st.divider()
-    
+
+    # --- 선적이력 탭 전용 키워드/HS CODE 기반 경고 메시지 감지 알고리즘 ---
+    if search_query.strip():
+        search_upper = search_query.strip().upper()
+        search_digits = re.sub(r'[^0-9]', '', search_upper)
+        history_warnings = []
+
+        if "200899" in search_digits or "2008.99" in search_upper:
+            history_warnings.append("⚠️ 2008.99-9000 EU 관세 품목 분류에 등록 되지 않은 코드")
+        if "242400" in search_digits or "2424.00" in search_upper:
+            history_warnings.append("⚠️ 유효하지 않은 HS CODE / HOUSEHOLD GOODS 는 9905.00 을 써주세요.")
+        if "MAGNET" in search_upper or "자성" in search_upper:
+            history_warnings.append("⚠️ 자성물질 MSDS 필요")
+        if "CARBON" in search_upper or "카본" in search_upper:
+            history_warnings.append("⚠️ carbon DG 로 간주되어 LCL 선적 불가")
+        if "ALKALINE" in search_upper or "알카라인" in search_upper:
+            history_warnings.append("ℹ️ Alkaline Battery 선적 가능")
+        if "LITHIUM" in search_upper or "리튬" in search_upper:
+            history_warnings.append("⚠️ lithium battery NON-DG 여도 LCL 선적 불가")
+        if any(kw in search_upper for kw in ["FOOD", "식품", "음식"]):
+            history_warnings.append("⚠️ FOOD STUFF 도착지 확인 필요")
+
+        if history_warnings:
+            combined_hist_warning = "\n".join(history_warnings)
+            st.markdown(f'<div style="display:inline-block;padding:5px 15px;border-radius:5px;background-color:rgba(255, 75, 75, 0.1);border:1px solid rgb(255, 75, 75);color:rgb(255, 75, 75);font-family:sans-serif;font-size:14px;line-height:1.5;white-space:pre-wrap;margin-bottom:15px;">{combined_hist_warning}</div><br>', unsafe_allow_html=True)
+
     # 스캔할 파일 대상 목록 구성
     files_to_scan = []
     if pod_code == "ALL":
