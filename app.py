@@ -65,7 +65,7 @@ def format_date_ist(v):
     except:
         return str(v).split(' ')[0]
 
-# ⭐ [IST CONSOL 전용] 회사명 정제 파서 (오류 수정 및 정밀 보완 버전) ⭐
+# [IST CONSOL 전용] 회사명 정제 파서
 def clean_company_name(text, is_pus=False, is_shipper=True):
     if pd.isna(text) or not str(text).strip():
         return ""
@@ -91,36 +91,34 @@ def clean_company_name(text, is_pus=False, is_shipper=True):
         
     full_text = " ".join(target_lines)
     
-    # 1. 서두에만 위치하는 대행/대리 표현 정밀 제거 (독립 단어 / 구문만)
     prefixes = [
-        r"^O/B\b\s*", r"^O/B:\s*",
-        r"^AS\s+AGENTS?\s+OF\b\s*", r"^AS\s+AGENTS?\s+FOR\b\s*", r"^AS\s+AGENTS?\b\s*", r"^AS\s+AGENT\b\s*",
-        r"^ON\s+BEHALF\s+OF\b\s*", r"^OB\b\s*", r"^OB:\s*"
+        r"^O/B\s*", r"^O/B:\s*", r"^AS\s+AGENT\s+OF\s*", r"^ON\s+BEHALF\s+OF\s*",
+        r"^OB\s*", r"^OB:\s*", r"^AS\s+AGENTS\s+FOR\s*", r"^AS\s+AGENT\s+FOR\s*"
     ]
     for ptn in prefixes:
         full_text = re.sub(ptn, "", full_text, flags=re.IGNORECASE).strip()
         
-    # 2. 법인 형태 키워드 (터키/유럽/글로벌 표현 포함)
     suffixes = [
-        r"LTD\.", r"LIMITED", r"A\.S\.", r"A\.S", r"A\.Ş\.", r"A\.Ş", r"AS", r"AŞ",
-        r"INC\.", r"STI\.", r"STI", r"ŞTI\.", r"ŞTI", r"CO\.,\s*LTD\.", r"CORP\.", r"CORPORATION",
-        r"TICARET", r"TIC\.", r"SANAYI", r"SAN\.", r"LOJISTIK", r"LOJ\.", r"HIZMETLERI", r"HIZ\.",
-        r"VE", r"TAS\.", r"TAS", r"TAŞ\.", r"TAŞ"
+        r"LTD\.", r"LIMITED", r"A\.S", r"A\.S\.", r"\bAS\b", r"INC\.",
+        r"STI\.", r"STI", r"CO\.,\s*LTD\.", r"CORP\.", r"CORPORATION"
     ]
     
     words = full_text.split()
     matched_idx = -1
     for i, w in enumerate(words):
-        w_upper = re.sub(r'[^A-Z\.]', '', w.upper())
+        w_clean = re.sub(r'[^A-Za-z\.]', '', w).upper()
         for sfx in suffixes:
-            s_clean = re.sub(r'[^A-Z\.]', '', sfx.upper())
-            if w_upper == s_clean or w_upper.endswith(s_clean):
-                matched_idx = i  # 뒤쪽 법인명 키워드까지 전체 포함되도록 갱신
-
+            s_clean = re.sub(r'[^A-Za-z\.]', '', sfx).upper()
+            if w_clean == s_clean or w_clean.endswith(s_clean):
+                matched_idx = i
+                break
+        if matched_idx != -1:
+            break
+            
     if matched_idx != -1:
         comp_name = " ".join(words[:matched_idx+1])
     else:
-        comp_name = full_text
+        comp_name = target_lines[0]
         
     for ptn in prefixes:
         comp_name = re.sub(ptn, "", comp_name, flags=re.IGNORECASE).strip()
@@ -379,7 +377,7 @@ with tab_ceva:
         except Exception as e: st.error(f"오류 발생: {e}")
 
 # ==========================================
-# TAB 3: IST CONSOL (회사명 파싱 보완 완료)
+# TAB 3: IST CONSOL (SAME AS CONSIGNEE 예외 처리 추가)
 # ==========================================
 with tab_ist:
     col_ist_up = st.columns([1.2, 1])[0]
@@ -528,6 +526,7 @@ with tab_ist:
                         consignee_clean = clean_company_name(raw_consignee, is_pus=True, is_shipper=False)
                     else:
                         raw_notify = str(r[notify_col]).strip() if (notify_col and pd.notna(r[notify_col])) else ""
+                        # ⭐ SAME AS CONSIGNEE 처리 예외 추가 ⭐
                         if raw_notify.upper().startswith("SAME AS CONSIGNEE") or raw_notify.upper().startswith("SAME AS ABOVE"):
                             raw_target = r[consignee_col] if consignee_col else ""
                         else:
