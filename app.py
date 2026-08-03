@@ -344,7 +344,7 @@ with tab_ceva:
         except Exception as e: st.error(f"오류 발생: {e}")
 
 # ==========================================
-# TAB 3: IST CONSOL (신규 추가 탭 - 원본 양식 + Total 포맷 반영)
+# TAB 3: IST CONSOL (컨테이너별 자동 정렬 포함)
 # ==========================================
 with tab_ist:
     col_ist_up = st.columns([1.2, 1])[0]
@@ -389,6 +389,11 @@ with tab_ist:
 
             if hbl_col:
                 valid_df = df1.dropna(subset=[hbl_col]).copy()
+
+                # ⭐ 컨테이너 번호 기준 자동 정렬 (컨테이너별 순서 배치) ⭐
+                if cntr_col:
+                    valid_df = valid_df.sort_values(by=[cntr_col, hbl_col], ascending=[True, True])
+
                 first_row = valid_df.iloc[0] if len(valid_df) > 0 else None
                 
                 vessel_val = str(first_row[vessel_col]).strip() if (first_row is not None and vessel_col and pd.notna(first_row[vessel_col])) else ""
@@ -407,33 +412,47 @@ with tab_ist:
                 align_center = Alignment(horizontal="center", vertical="center")
                 align_left = Alignment(horizontal="left", vertical="center")
 
-                # 1행 헤더
-                ws["E1"] = "Vessel"; ws["E1"].font = font_calibri_bold; ws["E1"].alignment = align_center
-                ws["F1"] = "Voyage"; ws["F1"].font = font_calibri_bold; ws["F1"].alignment = align_center
-                ws["G1"] = "Cut Off"; ws["G1"].font = font_calibri_bold; ws["G1"].alignment = align_center
-                ws["H1"] = "ETD"; ws["H1"].font = font_calibri_bold; ws["H1"].alignment = align_center
-                ws["I1"] = "ETA"; ws["I1"].font = font_calibri_bold; ws["I1"].alignment = align_center
+                thin_side = Side(border_style="thin", color="000000")
+                med_side = Side(border_style="medium", color="000000")
+
+                b_top_h = Border(top=med_side, bottom=thin_side, left=thin_side, right=thin_side)
+                b_top_d = Border(top=thin_side, bottom=med_side, left=thin_side, right=thin_side)
+
+                ws["E1"] = "Vessel"; ws["E1"].font = font_calibri_bold; ws["E1"].alignment = align_center; ws["E1"].border = Border(top=med_side, bottom=thin_side, left=med_side, right=thin_side)
+                ws["F1"] = "Voyage"; ws["F1"].font = font_calibri_bold; ws["F1"].alignment = align_center; ws["F1"].border = b_top_h
+                ws["G1"] = "Cut Off"; ws["G1"].font = font_calibri_bold; ws["G1"].alignment = align_center; ws["G1"].border = b_top_h
+                ws["H1"] = "ETD"; ws["H1"].font = font_calibri_bold; ws["H1"].alignment = align_center; ws["H1"].border = b_top_h
+                ws["I1"] = "ETA"; ws["I1"].font = font_calibri_bold; ws["I1"].alignment = align_center; ws["I1"].border = Border(top=med_side, bottom=thin_side, left=thin_side, right=med_side)
+                
                 ws["J1"] = "Master No"; ws["J1"].font = font_calibri_bold; ws["J1"].alignment = align_center
                 ws.merge_cells("J1:L1")
-                ws["M1"] = "Carrier"; ws["M1"].font = font_calibri_bold; ws["M1"].alignment = align_center
+                for col_idx in [10, 11, 12]:
+                    ws.cell(row=1, column=col_idx).border = Border(top=med_side, bottom=thin_side)
+                ws["J1"].border = Border(top=med_side, bottom=thin_side, left=med_side)
+                ws["L1"].border = Border(top=med_side, bottom=thin_side, right=med_side)
 
-                # 2행 데이터
-                ws["E2"] = vessel_val; ws["E2"].font = font_calibri_regular; ws["E2"].alignment = align_center
-                ws["F2"] = voyage_val; ws["F2"].font = font_calibri_regular; ws["F2"].alignment = align_center
-                ws["G2"] = ""; ws["G2"].font = font_calibri_regular; ws["G2"].alignment = align_center
-                ws["H2"] = etd_val; ws["H2"].font = font_calibri_regular; ws["H2"].alignment = align_center
-                ws["I2"] = eta_val; ws["I2"].font = font_calibri_regular; ws["I2"].alignment = align_center
+                ws["M1"] = "Carrier"; ws["M1"].font = font_calibri_bold; ws["M1"].alignment = align_center; ws["M1"].border = Border(top=med_side, bottom=thin_side, left=med_side, right=med_side)
+
+                ws["E2"] = vessel_val; ws["E2"].font = font_calibri_regular; ws["E2"].alignment = align_center; ws["E2"].border = Border(top=thin_side, bottom=med_side, left=med_side, right=thin_side)
+                ws["F2"] = voyage_val; ws["F2"].font = font_calibri_regular; ws["F2"].alignment = align_center; ws["F2"].border = b_top_d
+                ws["G2"] = ""; ws["G2"].font = font_calibri_regular; ws["G2"].alignment = align_center; ws["G2"].border = b_top_d
+                ws["H2"] = etd_val; ws["H2"].font = font_calibri_regular; ws["H2"].alignment = align_center; ws["H2"].border = b_top_d
+                ws["I2"] = eta_val; ws["I2"].font = font_calibri_regular; ws["I2"].alignment = align_center; ws["I2"].border = Border(top=thin_side, bottom=med_side, left=thin_side, right=med_side)
+                
                 ws["J2"] = mbl_val; ws["J2"].font = font_calibri_regular; ws["J2"].alignment = align_center
                 ws.merge_cells("J2:L2")
-                ws["M2"] = "MSC"; ws["M2"].font = font_calibri_regular; ws["M2"].alignment = align_center
+                for col_idx in [10, 11, 12]:
+                    ws.cell(row=2, column=col_idx).border = Border(top=thin_side, bottom=med_side)
+                ws["J2"].border = Border(top=thin_side, bottom=med_side, left=med_side)
+                ws["L2"].border = Border(top=thin_side, bottom=med_side, right=med_side)
 
-                # 3행~4행 POL/POD
+                ws["M2"] = "MSC"; ws["M2"].font = font_calibri_regular; ws["M2"].alignment = align_center; ws["M2"].border = Border(top=thin_side, bottom=med_side, left=med_side, right=med_side)
+
                 ws["A3"] = "POL"; ws["A3"].font = font_calibri_bold
                 ws["B3"] = "BUSAN "; ws["B3"].font = font_calibri_bold
                 ws["A4"] = "POD"; ws["A4"].font = font_calibri_bold
                 ws["B4"] = "ISTANBUL "; ws["B4"].font = font_calibri_bold
 
-                # 6행 테이블 헤더
                 tbl_h = [
                     ("A6", "Shpt"), ("B6", "HBL No."), ("C6", "CNTR SIZE"), ("D6", "Shipper"),
                     ("E6", "Consignee"), ("F6", "KGS"), ("G6", "PKG'S"), ("I6", "CBM"),
@@ -444,10 +463,12 @@ with tab_ist:
                     cell.value = title
                     cell.font = font_calibri_bold
                     cell.alignment = align_center
+                    cell.border = Border(top=med_side, bottom=med_side, left=thin_side, right=thin_side)
 
                 ws.merge_cells("G6:H6")
+                ws["G6"].border = Border(top=med_side, bottom=med_side, left=thin_side, right=thin_side)
+                ws["H6"].border = Border(top=med_side, bottom=med_side, left=thin_side, right=thin_side)
 
-                # 데이터 채우기 (7행부터 시작)
                 start_row = 7
                 total_data_count = len(valid_df)
 
@@ -455,8 +476,10 @@ with tab_ist:
                 sum_pkgs = 0
                 sum_cbm = 0.0
 
-                for idx, r in valid_df.iterrows():
-                    curr_row = start_row + idx
+                b_data_cell = Border(top=thin_side, bottom=thin_side, left=thin_side, right=thin_side)
+
+                for row_idx_0, (_, r) in enumerate(valid_df.iterrows()):
+                    curr_row = start_row + row_idx_0
                     hbl_val = str(r[hbl_col]).strip() if pd.notna(r[hbl_col]) else ""
                     is_pus = hbl_val.upper().startswith("PUS")
 
@@ -470,19 +493,20 @@ with tab_ist:
                         raw_notify = r[notify_col] if notify_col else ""
                         consignee_clean = clean_company_name(raw_notify, is_pus=False, is_shipper=False)
 
-                    # 수치 변환 및 누적 합계 계산
                     wgt_raw = float(r[weight_col]) if (weight_col and pd.notna(r[weight_col]) and str(r[weight_col]).replace('.','').isdigit()) else 0.0
                     pkg_raw = int(float(r[pkg_col])) if (pkg_col and pd.notna(r[pkg_col]) and str(r[pkg_col]).replace('.','').isdigit()) else 0
                     cbm_raw = float(r[measure_col]) if (measure_col and pd.notna(r[measure_col]) and str(r[measure_col]).replace('.','').isdigit()) else 0.0
 
+                    cbm_final = 1.0 if (0 < cbm_raw < 1) else cbm_raw
+
                     sum_kgs += wgt_raw
                     sum_pkgs += pkg_raw
-                    sum_cbm += cbm_raw
+                    sum_cbm += cbm_final
 
                     cntr_v = str(r[cntr_col]).strip() if (cntr_col and pd.notna(r[cntr_col])) else ""
                     seal_v = str(r[seal_col]).strip().split('.')[0] if (seal_col and pd.notna(r[seal_col])) else ""
 
-                    ws[f"A{curr_row}"] = idx + 1; ws[f"A{curr_row}"].alignment = align_center
+                    ws[f"A{curr_row}"] = row_idx_0 + 1; ws[f"A{curr_row}"].alignment = align_center
                     ws[f"B{curr_row}"] = hbl_val; ws[f"B{curr_row}"].alignment = align_center
                     ws[f"C{curr_row}"] = "40'HC"; ws[f"C{curr_row}"].alignment = align_center
                     ws[f"D{curr_row}"] = shipper_clean; ws[f"D{curr_row}"].alignment = align_left
@@ -490,7 +514,7 @@ with tab_ist:
                     ws[f"F{curr_row}"] = wgt_raw; ws[f"F{curr_row}"].alignment = align_center
                     ws[f"G{curr_row}"] = pkg_raw; ws[f"G{curr_row}"].alignment = align_center
                     ws[f"H{curr_row}"] = "PKG'S"; ws[f"H{curr_row}"].alignment = align_center
-                    ws[f"I{curr_row}"] = cbm_raw; ws[f"I{curr_row}"].alignment = align_center
+                    ws[f"I{curr_row}"] = cbm_final; ws[f"I{curr_row}"].alignment = align_center
                     ws[f"J{curr_row}"] = ""; ws[f"J{curr_row}"].alignment = align_center
                     ws[f"K{curr_row}"] = cntr_v; ws[f"K{curr_row}"].alignment = align_center
                     ws[f"L{curr_row}"] = seal_v; ws[f"L{curr_row}"].alignment = align_center
@@ -498,14 +522,16 @@ with tab_ist:
 
                     for col_l in ['A','B','C','D','E','F','G','H','I','J','K','L','M']:
                         ws[f"{col_l}{curr_row}"].font = font_calibri_regular
+                        ws[f"{col_l}{curr_row}"].border = b_data_cell
 
-                # TOTAL 행 추가 (소수점 셋째자리 및 Trailing Zero 제거 적용)
+                # TOTAL 행 추가
                 total_row_idx = start_row + total_data_count
+                b_total_cell = Border(top=thin_side, bottom=med_side, left=thin_side, right=thin_side)
 
                 ws[f"E{total_row_idx}"] = "Total"
                 ws[f"E{total_row_idx}"].font = font_calibri_bold
+                ws[f"E{total_row_idx}"].border = b_total_cell
 
-                # KGS 토탈 (소수점 셋째 자리 적용 / 맨 뒤 0 표기 제거)
                 formatted_total_kgs = format_number(sum_kgs)
                 try:
                     ws[f"F{total_row_idx}"] = float(formatted_total_kgs)
@@ -513,17 +539,18 @@ with tab_ist:
                     ws[f"F{total_row_idx}"] = formatted_total_kgs
                 ws[f"F{total_row_idx}"].font = font_calibri_bold
                 ws[f"F{total_row_idx}"].alignment = align_center
+                ws[f"F{total_row_idx}"].border = b_total_cell
 
-                # PKG'S 토탈
                 ws[f"G{total_row_idx}"] = sum_pkgs
                 ws[f"G{total_row_idx}"].font = font_calibri_bold
                 ws[f"G{total_row_idx}"].alignment = align_center
+                ws[f"G{total_row_idx}"].border = b_total_cell
 
                 ws[f"H{total_row_idx}"] = "PKG'S"
                 ws[f"H{total_row_idx}"].font = font_calibri_bold
                 ws[f"H{total_row_idx}"].alignment = align_center
+                ws[f"H{total_row_idx}"].border = b_total_cell
 
-                # CBM 토탈 (소수점 셋째 자리 적용 / 맨 뒤 0 표기 제거)
                 formatted_total_cbm = format_number(sum_cbm)
                 try:
                     ws[f"I{total_row_idx}"] = float(formatted_total_cbm)
@@ -531,8 +558,8 @@ with tab_ist:
                     ws[f"I{total_row_idx}"] = formatted_total_cbm
                 ws[f"I{total_row_idx}"].font = font_calibri_bold
                 ws[f"I{total_row_idx}"].alignment = align_center
+                ws[f"I{total_row_idx}"].border = b_total_cell
 
-                # 컬럼 너비 지정 (원본 서식과 100% 동일)
                 col_widths = {
                     'A': 8.38, 'B': 15.38, 'C': 9.38, 'D': 40.13, 'E': 54.13,
                     'F': 13.0, 'G': 10.75, 'H': 11.63, 'I': 10.75, 'J': 10.75,
