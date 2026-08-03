@@ -51,7 +51,7 @@ def format_wgt_ceva(v):
     except:
         return str(v)
 
-# ⭐ [IST CONSOL 전용] 날짜 포맷 함수 (예: 15-Jul) ⭐
+# [IST CONSOL 전용] 날짜 포맷 함수 (예: 15-Jul)
 def format_date_ist(v):
     if pd.isna(v) or not v:
         return ""
@@ -169,14 +169,14 @@ POD_LIST = [
 POD_OPTIONS = [f"{country} ({code})" if code != "ALL" else "전체 (ALL)" for country, code in POD_LIST]
 
 # --- 2. 페이지 설정 ---
-st.set_page_config(page_title="Europe Docs tool (Cargo Tool 6)", layout="wide")
+st.set_page_config(page_title="Europe Docs tool (Cargo Tool 7)", layout="wide")
 st.title("🚢 Europe Docs tool")
 
 # 탭 생성
 tab1, tab_ceva, tab_ist, tab_history, tab2 = st.tabs(["SR 정정", "CEVA(LEH)", "IST CONSOL", "선적이력", "업로드 기록"])
 
 # ==========================================
-# TAB 1: SR 정정 (Cargo Tool 6 - 대원칙 보존)
+# TAB 1: SR 정정 (Cargo Tool 7 - 대원칙 보존)
 # ==========================================
 with tab1:
     col_up1, col_up2, col_opt = st.columns([1.0, 1.5, 0.8])
@@ -377,7 +377,7 @@ with tab_ceva:
         except Exception as e: st.error(f"오류 발생: {e}")
 
 # ==========================================
-# TAB 3: IST CONSOL (컨테이너 그룹별 굵은 테두리 & 15-Jul 포맷 반영)
+# TAB 3: IST CONSOL (SAME AS CONSIGNEE 예외 처리 추가)
 # ==========================================
 with tab_ist:
     col_ist_up = st.columns([1.2, 1])[0]
@@ -525,8 +525,13 @@ with tab_ist:
                         raw_consignee = r[consignee_col] if consignee_col else ""
                         consignee_clean = clean_company_name(raw_consignee, is_pus=True, is_shipper=False)
                     else:
-                        raw_notify = r[notify_col] if notify_col else ""
-                        consignee_clean = clean_company_name(raw_notify, is_pus=False, is_shipper=False)
+                        raw_notify = str(r[notify_col]).strip() if (notify_col and pd.notna(r[notify_col])) else ""
+                        # ⭐ SAME AS CONSIGNEE 처리 예외 추가 ⭐
+                        if raw_notify.upper().startswith("SAME AS CONSIGNEE") or raw_notify.upper().startswith("SAME AS ABOVE"):
+                            raw_target = r[consignee_col] if consignee_col else ""
+                        else:
+                            raw_target = raw_notify
+                        consignee_clean = clean_company_name(raw_target, is_pus=False, is_shipper=False)
 
                     wgt_raw = float(r[weight_col]) if (weight_col and pd.notna(r[weight_col]) and str(r[weight_col]).replace('.','').isdigit()) else 0.0
                     pkg_raw = int(float(r[pkg_col])) if (pkg_col and pd.notna(r[pkg_col]) and str(r[pkg_col]).replace('.','').isdigit()) else 0
@@ -541,7 +546,6 @@ with tab_ist:
                     cntr_v = cntr_list[row_idx_0]
                     seal_v = str(r[seal_col]).strip().split('.')[0] if (seal_col and pd.notna(r[seal_col])) else ""
 
-                    # ⭐ 컨테이너 그룹 테두리 판별 (첫번째 행 top=medium, 마지막 행 bottom=medium) ⭐
                     is_cntr_first = (row_idx_0 == 0) or (cntr_v != cntr_list[row_idx_0 - 1])
                     is_cntr_last = (row_idx_0 == total_data_count - 1) or (cntr_v != cntr_list[row_idx_0 + 1])
 
