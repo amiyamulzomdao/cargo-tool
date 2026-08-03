@@ -5,7 +5,7 @@ import re
 import io
 from datetime import datetime, timedelta, timezone
 import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.styles import Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 # --- 1. 유틸리티 함수 ---
@@ -51,7 +51,7 @@ def format_wgt_ceva(v):
     except:
         return str(v)
 
-# [IST CONSOL 전용] 날짜 포맷 함수 (예: 9-Sep)
+# [IST CONSOL 전용] 날짜 포맷 함수 (예: YYYY-MM-DD)
 def format_date_ist(v):
     if pd.isna(v) or not v:
         return ""
@@ -61,7 +61,7 @@ def format_date_ist(v):
         else:
             v_str = str(v).strip().split(' ')[0]
             dt = pd.to_datetime(v_str)
-        return f"{dt.day}-{dt.strftime('%b')}"
+        return dt.strftime("%Y-%m-%d")
     except:
         return str(v).split(' ')[0]
 
@@ -75,7 +75,6 @@ def clean_company_name(text, is_pus=False, is_shipper=True):
     if not lines:
         return ""
     
-    # PUS 시작 여부에 따른 줄 선택
     if is_pus:
         target_lines = lines[:1]
     else:
@@ -83,7 +82,6 @@ def clean_company_name(text, is_pus=False, is_shipper=True):
             if lines[0].upper().startswith("NIPPON"):
                 target_lines = lines
             else:
-
                 target_lines = lines[1:] if len(lines) > 1 else lines
         else:
             target_lines = lines
@@ -93,7 +91,6 @@ def clean_company_name(text, is_pus=False, is_shipper=True):
         
     full_text = " ".join(target_lines)
     
-    # 불필요 서두 문구 제거
     prefixes = [
         r"^O/B\s*", r"^O/B:\s*", r"^AS\s+AGENT\s+OF\s*", r"^ON\s+BEHALF\s+OF\s*",
         r"^OB\s*", r"^OB:\s*", r"^AS\s+AGENTS\s+FOR\s*", r"^AS\s+AGENT\s+FOR\s*"
@@ -101,7 +98,6 @@ def clean_company_name(text, is_pus=False, is_shipper=True):
     for ptn in prefixes:
         full_text = re.sub(ptn, "", full_text, flags=re.IGNORECASE).strip()
         
-    # 법인 확장 키워드 패턴
     suffixes = [
         r"LTD\.", r"LIMITED", r"A\.S", r"A\.S\.", r"\bAS\b", r"INC\.",
         r"STI\.", r"STI", r"CO\.,\s*LTD\.", r"CORP\.", r"CORPORATION"
@@ -143,7 +139,7 @@ POD_OPTIONS = [f"{country} ({code})" if code != "ALL" else "전체 (ALL)" for co
 st.set_page_config(page_title="Europe Docs tool (Cargo Tool 6)", layout="wide")
 st.title("🚢 Europe Docs tool")
 
-# 탭 생성 (IST CONSOL 신규 탭 추가)
+# 탭 생성
 tab1, tab_ceva, tab_ist, tab_history, tab2 = st.tabs(["SR 정정", "CEVA(LEH)", "IST CONSOL", "선적이력", "업로드 기록"])
 
 # ==========================================
@@ -348,21 +344,18 @@ with tab_ceva:
         except Exception as e: st.error(f"오류 발생: {e}")
 
 # ==========================================
-# TAB 3: IST CONSOL (신규 추가 탭)
+# TAB 3: IST CONSOL (신규 추가 탭 - 원본 양식 + Total 포맷 반영)
 # ==========================================
 with tab_ist:
-    col_ist_up = st.columns([1.5, 1])[0]
+    col_ist_up = st.columns([1.2, 1])[0]
     with col_ist_up:
-        ist_file = st.file_uploader("IST 엑셀 파일(1파일)을 업로드하세요", type=["xlsx"], key="ist_up")
+        ist_file = st.file_uploader("IST 엑셀 파일을 업로드하세요", type=["xlsx"], key="ist_up")
         
-    st.divider()
-    
     if ist_file:
         try:
             log_uploaded_filename(ist_file.name, "IST")
             raw_ist_df = pd.read_excel(ist_file)
             
-            # 헤더 행 유연 감지
             header_idx = None
             if "House B/L No" in raw_ist_df.columns:
                 df1 = raw_ist_df
@@ -379,7 +372,6 @@ with tab_ist:
 
             df1.columns = [str(c).strip() for c in df1.columns]
             
-            # 유연 열 매핑 추적
             hbl_col = next((c for c in df1.columns if "House B/L" in c), None)
             vessel_col = next((c for c in df1.columns if "Vessel" in c), None)
             voyage_col = next((c for c in df1.columns if "항차" in c), None)
@@ -407,59 +399,70 @@ with tab_ist:
 
                 wb = openpyxl.Workbook()
                 ws = wb.active
-                ws.title = "IST FINAL"
+                ws.title = "LOADING LIST"
 
-                # 테두리 및 스타일 정의
-                thin = Side(border_style="thin", color="000000")
-                box_border = Border(left=thin, right=thin, top=thin, bottom=thin)
-                align_center = Alignment(horizontal="center", vertical="center", wrap_text=True)
-                align_left = Alignment(horizontal="left", vertical="center", wrap_text=True)
-                fill_header = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
-                font_title = Font(name="Calibri", size=14, bold=True)
-                font_header = Font(name="Calibri", size=10, bold=True)
-                font_data = Font(name="Calibri", size=10, bold=False)
-
-                # 상단 헤더 텍스트 작성
-                ws["B2"] = "IST FINAL CONSOL LIST"; ws["B2"].font = font_title
+                font_calibri_bold = Font(name="Calibri", size=11, bold=True)
+                font_calibri_regular = Font(name="Calibri", size=11, bold=False)
                 
-                headers_r1 = [
-                    ("E2", "Vessel", vessel_val), ("F2", "Voyage", voyage_val), ("G2", "", ""),
-                    ("H2", "ETD", etd_val), ("I2", "ETA", eta_val), ("J2", "Master B/L No.", mbl_val),
-                    ("K2", "", ""), ("L2", "", ""), ("M2", "Carrier", "MSC")
+                align_center = Alignment(horizontal="center", vertical="center")
+                align_left = Alignment(horizontal="left", vertical="center")
+
+                # 1행 헤더
+                ws["E1"] = "Vessel"; ws["E1"].font = font_calibri_bold; ws["E1"].alignment = align_center
+                ws["F1"] = "Voyage"; ws["F1"].font = font_calibri_bold; ws["F1"].alignment = align_center
+                ws["G1"] = "Cut Off"; ws["G1"].font = font_calibri_bold; ws["G1"].alignment = align_center
+                ws["H1"] = "ETD"; ws["H1"].font = font_calibri_bold; ws["H1"].alignment = align_center
+                ws["I1"] = "ETA"; ws["I1"].font = font_calibri_bold; ws["I1"].alignment = align_center
+                ws["J1"] = "Master No"; ws["J1"].font = font_calibri_bold; ws["J1"].alignment = align_center
+                ws.merge_cells("J1:L1")
+                ws["M1"] = "Carrier"; ws["M1"].font = font_calibri_bold; ws["M1"].alignment = align_center
+
+                # 2행 데이터
+                ws["E2"] = vessel_val; ws["E2"].font = font_calibri_regular; ws["E2"].alignment = align_center
+                ws["F2"] = voyage_val; ws["F2"].font = font_calibri_regular; ws["F2"].alignment = align_center
+                ws["G2"] = ""; ws["G2"].font = font_calibri_regular; ws["G2"].alignment = align_center
+                ws["H2"] = etd_val; ws["H2"].font = font_calibri_regular; ws["H2"].alignment = align_center
+                ws["I2"] = eta_val; ws["I2"].font = font_calibri_regular; ws["I2"].alignment = align_center
+                ws["J2"] = mbl_val; ws["J2"].font = font_calibri_regular; ws["J2"].alignment = align_center
+                ws.merge_cells("J2:L2")
+                ws["M2"] = "MSC"; ws["M2"].font = font_calibri_regular; ws["M2"].alignment = align_center
+
+                # 3행~4행 POL/POD
+                ws["A3"] = "POL"; ws["A3"].font = font_calibri_bold
+                ws["B3"] = "BUSAN "; ws["B3"].font = font_calibri_bold
+                ws["A4"] = "POD"; ws["A4"].font = font_calibri_bold
+                ws["B4"] = "ISTANBUL "; ws["B4"].font = font_calibri_bold
+
+                # 6행 테이블 헤더
+                tbl_h = [
+                    ("A6", "Shpt"), ("B6", "HBL No."), ("C6", "CNTR SIZE"), ("D6", "Shipper"),
+                    ("E6", "Consignee"), ("F6", "KGS"), ("G6", "PKG'S"), ("I6", "CBM"),
+                    ("J6", "R/O"), ("K6", "Conatainer No."), ("L6", "Seal No."), ("M6", "REMARKS")
                 ]
-                
-                for cell_ref, title, val in headers_r1:
+                for cell_ref, title in tbl_h:
                     cell = ws[cell_ref]
-                    cell.value = f"{title}\n{val}".strip() if title else val
-                    cell.font = font_header; cell.alignment = align_center; cell.fill = fill_header; cell.border = box_border
+                    cell.value = title
+                    cell.font = font_calibri_bold
+                    cell.alignment = align_center
 
-                ws["B3"] = "BUSAN"; ws["B3"].font = font_header; ws["B3"].alignment = align_center; ws["B3"].fill = fill_header; ws["B3"].border = box_border
-                ws["B4"] = "ISTANBUL"; ws["B4"].font = font_header; ws["B4"].alignment = align_center; ws["B4"].fill = fill_header; ws["B4"].border = box_border
+                ws.merge_cells("G6:H6")
 
-                table_headers = [
-                    ("B5", "HBL No."), ("C5", "CNTR SIZE"), ("D5", "Shipper"), ("E5", "Consignee"),
-                    ("F5", "KGS"), ("G5", "PKG'S"), ("H5", ""), ("I5", "CBM"),
-                    ("J5", "R/O"), ("K5", "Container No."), ("L5", "Seal No."), ("M5", "REMARKS")
-                ]
-                for cell_ref, h_text in table_headers:
-                    cell = ws[cell_ref]
-                    cell.value = h_text
-                    cell.font = font_header; cell.alignment = align_center; cell.fill = fill_header; cell.border = box_border
+                # 데이터 채우기 (7행부터 시작)
+                start_row = 7
+                total_data_count = len(valid_df)
 
-                # 데이터 행 채우기
-                start_row = 6
-                preview_data = []
+                sum_kgs = 0.0
+                sum_pkgs = 0
+                sum_cbm = 0.0
 
                 for idx, r in valid_df.iterrows():
-                    row_idx = start_row + len(preview_data)
+                    curr_row = start_row + idx
                     hbl_val = str(r[hbl_col]).strip() if pd.notna(r[hbl_col]) else ""
                     is_pus = hbl_val.upper().startswith("PUS")
 
-                    # Shipper 파싱
                     raw_shipper = r[shipper_col] if shipper_col else ""
                     shipper_clean = clean_company_name(raw_shipper, is_pus=is_pus, is_shipper=True)
 
-                    # Consignee 파싱
                     if is_pus:
                         raw_consignee = r[consignee_col] if consignee_col else ""
                         consignee_clean = clean_company_name(raw_consignee, is_pus=True, is_shipper=False)
@@ -467,68 +470,88 @@ with tab_ist:
                         raw_notify = r[notify_col] if notify_col else ""
                         consignee_clean = clean_company_name(raw_notify, is_pus=False, is_shipper=False)
 
-                    wgt_v = r[weight_col] if weight_col else ""
-                    pkg_v = r[pkg_col] if pkg_col else ""
-                    cbm_v = r[measure_col] if measure_col else ""
-                    cntr_v = r[cntr_col] if cntr_col else ""
-                    seal_v = r[seal_col] if seal_col else ""
+                    # 수치 변환 및 누적 합계 계산
+                    wgt_raw = float(r[weight_col]) if (weight_col and pd.notna(r[weight_col]) and str(r[weight_col]).replace('.','').isdigit()) else 0.0
+                    pkg_raw = int(float(r[pkg_col])) if (pkg_col and pd.notna(r[pkg_col]) and str(r[pkg_col]).replace('.','').isdigit()) else 0
+                    cbm_raw = float(r[measure_col]) if (measure_col and pd.notna(r[measure_col]) and str(r[measure_col]).replace('.','').isdigit()) else 0.0
 
-                    row_data = {
-                        "B": hbl_val,
-                        "C": "40'HC",
-                        "D": shipper_clean,
-                        "E": consignee_clean,
-                        "F": format_number(wgt_v),
-                        "G": int(float(pkg_v)) if (pd.notna(pkg_v) and str(pkg_v).replace('.','').isdigit()) else pkg_v,
-                        "H": "PKG'S",
-                        "I": format_number(cbm_v),
-                        "J": "",
-                        "K": str(cntr_v).strip() if pd.notna(cntr_v) else "",
-                        "L": str(seal_v).strip().split('.')[0] if pd.notna(seal_v) else "",
-                        "M": ""
-                    }
+                    sum_kgs += wgt_raw
+                    sum_pkgs += pkg_raw
+                    sum_cbm += cbm_raw
 
-                    for col_letter, val in row_data.items():
-                        cell = ws[f"{col_letter}{row_idx}"]
-                        cell.value = val
-                        cell.font = font_data; cell.border = box_border
-                        if col_letter in ["F", "G", "I"]:
-                            cell.alignment = Alignment(horizontal="right", vertical="center")
-                        elif col_letter in ["D", "E"]:
-                            cell.alignment = align_left
-                        else:
-                            cell.alignment = align_center
+                    cntr_v = str(r[cntr_col]).strip() if (cntr_col and pd.notna(r[cntr_col])) else ""
+                    seal_v = str(r[seal_col]).strip().split('.')[0] if (seal_col and pd.notna(r[seal_col])) else ""
 
-                    preview_data.append(row_data)
+                    ws[f"A{curr_row}"] = idx + 1; ws[f"A{curr_row}"].alignment = align_center
+                    ws[f"B{curr_row}"] = hbl_val; ws[f"B{curr_row}"].alignment = align_center
+                    ws[f"C{curr_row}"] = "40'HC"; ws[f"C{curr_row}"].alignment = align_center
+                    ws[f"D{curr_row}"] = shipper_clean; ws[f"D{curr_row}"].alignment = align_left
+                    ws[f"E{curr_row}"] = consignee_clean; ws[f"E{curr_row}"].alignment = align_left
+                    ws[f"F{curr_row}"] = wgt_raw; ws[f"F{curr_row}"].alignment = align_center
+                    ws[f"G{curr_row}"] = pkg_raw; ws[f"G{curr_row}"].alignment = align_center
+                    ws[f"H{curr_row}"] = "PKG'S"; ws[f"H{curr_row}"].alignment = align_center
+                    ws[f"I{curr_row}"] = cbm_raw; ws[f"I{curr_row}"].alignment = align_center
+                    ws[f"J{curr_row}"] = ""; ws[f"J{curr_row}"].alignment = align_center
+                    ws[f"K{curr_row}"] = cntr_v; ws[f"K{curr_row}"].alignment = align_center
+                    ws[f"L{curr_row}"] = seal_v; ws[f"L{curr_row}"].alignment = align_center
+                    ws[f"M{curr_row}"] = ""; ws[f"M{curr_row}"].alignment = align_center
 
-                # 열 너비 자동 설정
-                for col in ws.columns:
-                    col_letter = get_column_letter(col[0].column)
-                    if col_letter in ["D", "E"]:
-                        ws.column_dimensions[col_letter].width = 32
-                    elif col_letter in ["B", "K", "L"]:
-                        ws.column_dimensions[col_letter].width = 18
-                    else:
-                        ws.column_dimensions[col_letter].width = 12
+                    for col_l in ['A','B','C','D','E','F','G','H','I','J','K','L','M']:
+                        ws[f"{col_l}{curr_row}"].font = font_calibri_regular
+
+                # TOTAL 행 추가 (소수점 셋째자리 및 Trailing Zero 제거 적용)
+                total_row_idx = start_row + total_data_count
+
+                ws[f"E{total_row_idx}"] = "Total"
+                ws[f"E{total_row_idx}"].font = font_calibri_bold
+
+                # KGS 토탈 (소수점 셋째 자리 적용 / 맨 뒤 0 표기 제거)
+                formatted_total_kgs = format_number(sum_kgs)
+                try:
+                    ws[f"F{total_row_idx}"] = float(formatted_total_kgs)
+                except:
+                    ws[f"F{total_row_idx}"] = formatted_total_kgs
+                ws[f"F{total_row_idx}"].font = font_calibri_bold
+                ws[f"F{total_row_idx}"].alignment = align_center
+
+                # PKG'S 토탈
+                ws[f"G{total_row_idx}"] = sum_pkgs
+                ws[f"G{total_row_idx}"].font = font_calibri_bold
+                ws[f"G{total_row_idx}"].alignment = align_center
+
+                ws[f"H{total_row_idx}"] = "PKG'S"
+                ws[f"H{total_row_idx}"].font = font_calibri_bold
+                ws[f"H{total_row_idx}"].alignment = align_center
+
+                # CBM 토탈 (소수점 셋째 자리 적용 / 맨 뒤 0 표기 제거)
+                formatted_total_cbm = format_number(sum_cbm)
+                try:
+                    ws[f"I{total_row_idx}"] = float(formatted_total_cbm)
+                except:
+                    ws[f"I{total_row_idx}"] = formatted_total_cbm
+                ws[f"I{total_row_idx}"].font = font_calibri_bold
+                ws[f"I{total_row_idx}"].alignment = align_center
+
+                # 컬럼 너비 지정 (원본 서식과 100% 동일)
+                col_widths = {
+                    'A': 8.38, 'B': 15.38, 'C': 9.38, 'D': 40.13, 'E': 54.13,
+                    'F': 13.0, 'G': 10.75, 'H': 11.63, 'I': 10.75, 'J': 10.75,
+                    'K': 13.63, 'L': 13.88, 'M': 17.75
+                }
+                for c_letter, w_val in col_widths.items():
+                    ws.column_dimensions[c_letter].width = w_val
 
                 output_excel = io.BytesIO()
                 wb.save(output_excel)
                 output_excel.seek(0)
 
-                st.subheader("정리 결과")
+                st.write("")
                 st.download_button(
-                    label="💾 IST FINAL CONSOL LIST 엑셀 다운로드",
+                    label="💾 IST FINAL CONSOL LIST 다운로드",
                     data=output_excel,
                     file_name=f"IST_FINAL_CONSOL_LIST_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    type="primary",
-                    use_container_width=True
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
-
-                if preview_data:
-                    out_p_df = pd.DataFrame(preview_data)
-                    out_p_df.columns = ["HBL No.", "CNTR SIZE", "Shipper", "Consignee", "KGS", "PKG'S", "UNIT", "CBM", "R/O", "Container No.", "Seal No.", "REMARKS"]
-                    st.dataframe(out_p_df, use_container_width=True, height=500)
 
             else:
                 st.error("엑셀 파일 내 'House B/L No' 열을 찾을 수 없습니다.")
