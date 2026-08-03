@@ -65,7 +65,7 @@ def format_date_ist(v):
     except:
         return str(v).split(' ')[0]
 
-# ⭐ [IST CONSOL 전용] 회사명 정제 파서 (ROTORK / TIC.AS / 터키주소 자르기 정밀 완벽 교정) ⭐
+# ⭐ [IST CONSOL 전용] 회사명 정제 파서 (NIPPON 2줄 누락 오류 완벽 해결 버전) ⭐
 def clean_company_name(text, is_pus=False, is_shipper=True):
     if not text or pd.isna(text) or not str(text).strip():
         return ""
@@ -84,6 +84,7 @@ def clean_company_name(text, is_pus=False, is_shipper=True):
             else:
                 target_lines = lines[1:] if len(lines) > 1 else lines
         else:
+            # Consignee / Notify에서도 NIPPON으로 시작하거나 멀티라인 회사명인 경우 모든 줄 파싱
             target_lines = lines
             
     if not target_lines:
@@ -91,10 +92,11 @@ def clean_company_name(text, is_pus=False, is_shipper=True):
         
     full_text = " ".join(target_lines)
     
-    # 0. 붙어있는 TIC.AS / LTD.STI 띄어쓰기 교정
+    # 0. 붙어있는 TIC.AS / LTD.STI / LOJISTIK.AS 띄어쓰기 교정
     full_text = re.sub(r'TIC\.AS\b', 'TIC. AS', full_text, flags=re.IGNORECASE)
     full_text = re.sub(r'TIC\.A\.S\b', 'TIC. A.S.', full_text, flags=re.IGNORECASE)
     full_text = re.sub(r'LTD\.STI\b', 'LTD. STI.', full_text, flags=re.IGNORECASE)
+    full_text = re.sub(r'LOJISTIK\.AS\b', 'LOJISTIK A.S.', full_text, flags=re.IGNORECASE)
     
     # 1. 중간/서두 대행/위임 구문 패턴 제거 (이 구문 이후는 전부 잘라냄)
     sub_agent_patterns = [
