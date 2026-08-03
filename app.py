@@ -65,7 +65,7 @@ def format_date_ist(v):
     except:
         return str(v).split(' ')[0]
 
-# ⭐ [IST CONSOL 전용] 회사명 정제 파서 (STI. / LTD. STI. / AS 정밀 파싱 완료) ⭐
+# ⭐ [IST CONSOL 전용] 회사명 정제 파서 (NIPPON / 터키 특수문자 / A.S. / A. S. 완전 통합 해결) ⭐
 def clean_company_name(text, is_pus=False, is_shipper=True):
     if not text or pd.isna(text) or not str(text).strip():
         return ""
@@ -91,7 +91,7 @@ def clean_company_name(text, is_pus=False, is_shipper=True):
         
     full_text = " ".join(target_lines)
     
-    # 1. 서두에만 존재하는 대행/대리 표현 정밀 제거 (독립 단어만 제거)
+    # 1. 서두에 위치하는 대행/대리 표현 정밀 제거 (독립 구문만 제거)
     prefixes = [
         r"^O/B\b\s*", r"^O/B:\s*",
         r"^AS\s+AGENTS?\s+OF\b\s*", r"^AS\s+AGENTS?\s+FOR\b\s*", r"^AS\s+AGENTS?\b\s*", r"^AS\s+AGENT\b\s*",
@@ -100,25 +100,43 @@ def clean_company_name(text, is_pus=False, is_shipper=True):
     for ptn in prefixes:
         full_text = re.sub(ptn, "", full_text, flags=re.IGNORECASE).strip()
         
-    # 2. 법인 명칭 접미사 패턴 (STI., LTD. STI., A.S., AS, INC. 등 전체 수용)
+    # 터키어 특수문자 표준 정규화 함수 (Ş->S, İ->I 등)
+    def normalize_tr(s):
+        tr_map = str.maketrans("ŞİÇĞÖÜşiçğöüIı", "SICGOUsicgouIi")
+        return s.translate(tr_map).upper()
+        
     suffixes = [
         r"LTD\.", r"LIMITED", r"A\.S\.", r"A\.S", r"A\.Ş\.", r"A\.Ş", r"\bAS\b", r"\bAŞ\b",
-        r"INC\.", r"STI\.", r"STI", r"ŞTI\.", r"ŞTI", r"CO\.,\s*LTD\.", r"CORP\.", r"CORPORATION"
+        r"INC\.", r"STI\.", r"STI", r"ŞTI\.", r"ŞTI", r"CO\.,\s*LTD\.", r"CORP\.", r"CORPORATION",
+        r"TICARET", r"TIC\.", r"SANAYI", r"SAN\.", r"LOJISTIK", r"LOJ\.", r"HIZMETLERI", r"HIZ\.",
+        r"VE", r"TAS\.", r"TAS", r"TAŞ\.", r"TAŞ"
     ]
     
     words = full_text.split()
     matched_idx = -1
+    
     for i, w in enumerate(words):
-        w_upper = re.sub(r'[^A-Z\.]', '', w.upper())
-        for sfx in suffixes:
-            s_clean = re.sub(r'[^A-Z\.]', '', sfx.upper())
-            if w_upper == s_clean or w_upper.endswith(s_clean):
-                matched_idx = i  # 가장 뒤쪽의 법인 접미사 단어까지 포함하도록 갱신
+        w_norm = re.sub(r'[^A-Z\.]', '', normalize_tr(w))
+        
+        # 2단어 구문 패턴 체크 (예: "A. S.", "A. S", "LTD. STI.")
+        if i < len(words) - 1:
+            w_next = re.sub(r'[^A-Z\.]', '', normalize_tr(words[i+1]))
+            combined = w_norm + " " + w_next
+            if combined in ["A. S.", "A. S", "A. STI.", "LTD. STI.", "LIMITED STI.", "TIC. AS", "SAN. AS"]:
+                matched_idx = i + 1
+                continue
 
+        for sfx in suffixes:
+            s_clean = re.sub(r'[^A-Z\.]', '', normalize_tr(sfx))
+            if s_clean and (w_norm == s_clean or w_norm.endswith(s_clean)):
+                if i > matched_idx:
+                    matched_idx = i
+
+    # 매칭된 법인 키워드 위치까지 가져오되, 매칭되지 않는 경우 전체 텍스트 보존
     if matched_idx != -1:
         comp_name = " ".join(words[:matched_idx+1])
     else:
-        comp_name = target_lines[0]
+        comp_name = full_text
         
     for ptn in prefixes:
         comp_name = re.sub(ptn, "", comp_name, flags=re.IGNORECASE).strip()
