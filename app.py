@@ -51,7 +51,7 @@ def format_wgt_ceva(v):
     except:
         return str(v)
 
-# [IST CONSOL 전용] 날짜 포맷 함수 (예: YYYY-MM-DD)
+# ⭐ [IST CONSOL 전용] 날짜 포맷 함수 (예: 15-Jul) ⭐
 def format_date_ist(v):
     if pd.isna(v) or not v:
         return ""
@@ -61,7 +61,7 @@ def format_date_ist(v):
         else:
             v_str = str(v).strip().split(' ')[0]
             dt = pd.to_datetime(v_str)
-        return dt.strftime("%Y-%m-%d")
+        return f"{dt.day}-{dt.strftime('%b')}"
     except:
         return str(v).split(' ')[0]
 
@@ -124,6 +124,39 @@ def clean_company_name(text, is_pus=False, is_shipper=True):
         comp_name = re.sub(ptn, "", comp_name, flags=re.IGNORECASE).strip()
         
     return comp_name
+
+# [선적이력 최적화] 지연 로딩 & 캐싱 파서 함수
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_history_excel_cached(file_path):
+    try:
+        raw_df = pd.read_excel(file_path)
+        header_row_idx = None
+        if "House B/L No" in raw_df.columns:
+            hist_df = raw_df
+        else:
+            for idx in range(min(5, len(raw_df))):
+                row_vals = [str(v).strip() for v in raw_df.iloc[idx].values]
+                if any("House B/L" in v for v in row_vals):
+                    header_row_idx = idx
+                    break
+            if header_row_idx is not None:
+                hist_df = pd.read_excel(file_path, header=header_row_idx + 1)
+            else:
+                hist_df = raw_df
+
+        hist_df.columns = [str(c).strip() for c in hist_df.columns]
+        hbl_col = next((c for c in hist_df.columns if "House B/L" in c), None)
+        etd_col = next((c for c in hist_df.columns if "ETD" in c), None)
+        item_col = next((c for c in hist_df.columns if "품목" in c), None)
+
+        if hbl_col and etd_col and item_col:
+            res_df = hist_df[[hbl_col, etd_col, item_col]].copy()
+            res_df.columns = ['House B/L No', 'ETD', '품목']
+            res_df = res_df.dropna(subset=['House B/L No'])
+            return res_df
+    except Exception:
+        pass
+    return None
 
 # --- POD 정의 ---
 POD_LIST = [
@@ -344,7 +377,7 @@ with tab_ceva:
         except Exception as e: st.error(f"오류 발생: {e}")
 
 # ==========================================
-# TAB 3: IST CONSOL (컨테이너별 자동 정렬 포함)
+# TAB 3: IST CONSOL (컨테이너 그룹별 굵은 테두리 & 15-Jul 포맷 반영)
 # ==========================================
 with tab_ist:
     col_ist_up = st.columns([1.2, 1])[0]
@@ -390,7 +423,6 @@ with tab_ist:
             if hbl_col:
                 valid_df = df1.dropna(subset=[hbl_col]).copy()
 
-                # ⭐ 컨테이너 번호 기준 자동 정렬 (컨테이너별 순서 배치) ⭐
                 if cntr_col:
                     valid_df = valid_df.sort_values(by=[cntr_col, hbl_col], ascending=[True, True])
 
@@ -476,7 +508,10 @@ with tab_ist:
                 sum_pkgs = 0
                 sum_cbm = 0.0
 
-                b_data_cell = Border(top=thin_side, bottom=thin_side, left=thin_side, right=thin_side)
+                cntr_list = []
+                for row_idx_0, (_, r) in enumerate(valid_df.iterrows()):
+                    cntr_v = str(r[cntr_col]).strip() if (cntr_col and pd.notna(r[cntr_col])) else ""
+                    cntr_list.append(cntr_v)
 
                 for row_idx_0, (_, r) in enumerate(valid_df.iterrows()):
                     curr_row = start_row + row_idx_0
@@ -503,8 +538,15 @@ with tab_ist:
                     sum_pkgs += pkg_raw
                     sum_cbm += cbm_final
 
-                    cntr_v = str(r[cntr_col]).strip() if (cntr_col and pd.notna(r[cntr_col])) else ""
+                    cntr_v = cntr_list[row_idx_0]
                     seal_v = str(r[seal_col]).strip().split('.')[0] if (seal_col and pd.notna(r[seal_col])) else ""
+
+                    # ⭐ 컨테이너 그룹 테두리 판별 (첫번째 행 top=medium, 마지막 행 bottom=medium) ⭐
+                    is_cntr_first = (row_idx_0 == 0) or (cntr_v != cntr_list[row_idx_0 - 1])
+                    is_cntr_last = (row_idx_0 == total_data_count - 1) or (cntr_v != cntr_list[row_idx_0 + 1])
+
+                    top_s = med_side if is_cntr_first else thin_side
+                    bot_s = med_side if is_cntr_last else thin_side
 
                     ws[f"A{curr_row}"] = row_idx_0 + 1; ws[f"A{curr_row}"].alignment = align_center
                     ws[f"B{curr_row}"] = hbl_val; ws[f"B{curr_row}"].alignment = align_center
@@ -522,9 +564,8 @@ with tab_ist:
 
                     for col_l in ['A','B','C','D','E','F','G','H','I','J','K','L','M']:
                         ws[f"{col_l}{curr_row}"].font = font_calibri_regular
-                        ws[f"{col_l}{curr_row}"].border = b_data_cell
+                        ws[f"{col_l}{curr_row}"].border = Border(top=top_s, bottom=bot_s, left=thin_side, right=thin_side)
 
-                # TOTAL 행 추가
                 total_row_idx = start_row + total_data_count
                 b_total_cell = Border(top=thin_side, bottom=med_side, left=thin_side, right=thin_side)
 
@@ -587,7 +628,7 @@ with tab_ist:
             st.error(f"IST 데이터 처리 중 오류 발생: {e}")
 
 # ==========================================
-# TAB 4: 선적이력
+# TAB 4: 선적이력 (Lazy Loading 적용 최적화)
 # ==========================================
 with tab_history:
     col_pod, col_query, col_btn = st.columns([1, 1.8, 0.5])
@@ -648,66 +689,37 @@ with tab_history:
         elif pod_code == "PLGDN" and os.path.exists("GDN.xlsx"):
             files_to_scan.append((pod_code, "GDN.xlsx"))
             
-    if files_to_scan:
-        all_matched_rows = []
-        for cur_pod, target_file in files_to_scan:
-            try:
-                raw_df = pd.read_excel(target_file)
-                
-                header_row_idx = None
-                if "House B/L No" in raw_df.columns:
-                    hist_df = raw_df
-                else:
-                    for idx in range(min(5, len(raw_df))):
-                        row_vals = [str(v).strip() for v in raw_df.iloc[idx].values]
-                        if any("House B/L" in v for v in row_vals):
-                            header_row_idx = idx
-                            break
-                    if header_row_idx is not None:
-                        hist_df = pd.read_excel(target_file, header=header_row_idx + 1)
-                    else:
-                        hist_df = raw_df
-
-                hist_df.columns = [str(c).strip() for c in hist_df.columns]
-                
-                hbl_col = next((c for c in hist_df.columns if "House B/L" in c), None)
-                etd_col = next((c for c in hist_df.columns if "ETD" in c), None)
-                item_col = next((c for c in hist_df.columns if "품목" in c), None)
-                
-                if hbl_col and etd_col and item_col:
-                    res_df = hist_df[[hbl_col, etd_col, item_col]].copy()
-                    res_df.columns = ['House B/L No', 'ETD', '품목']
-                    res_df = res_df.dropna(subset=['House B/L No'])
+    if search_query.strip():
+        if files_to_scan:
+            all_matched_rows = []
+            for cur_pod, target_file in files_to_scan:
+                res_df = load_history_excel_cached(target_file)
+                if res_df is not None:
+                    q_raw = search_query.strip().upper()
+                    q_digits = re.sub(r'[^0-9]', '', q_raw)
                     
-                    if search_query.strip():
-                        q_raw = search_query.strip().upper()
-                        q_digits = re.sub(r'[^0-9]', '', q_raw)
+                    for _, r in res_df.iterrows():
+                        item_val = str(r['품목']) if pd.notna(r['품목']) else ""
+                        item_upper = item_val.upper()
+                        item_digits = re.sub(r'[^0-9]', '', item_val)
                         
-                        for _, r in res_df.iterrows():
-                            item_val = str(r['품목']) if pd.notna(r['품목']) else ""
-                            item_upper = item_val.upper()
-                            item_digits = re.sub(r'[^0-9]', '', item_val)
+                        is_match = False
+                        if len(q_digits) >= 4 and q_digits in item_digits:
+                            is_match = True
+                        elif q_raw in item_upper:
+                            is_match = True
                             
-                            is_match = False
-                            if len(q_digits) >= 4 and q_digits in item_digits:
-                                is_match = True
-                            elif q_raw in item_upper:
-                                is_match = True
-                                
-                            if is_match:
-                                etd_str = str(r['ETD']).split(' ')[0] if pd.notna(r['ETD']) else ""
-                                item_dict = {
-                                    'House B/L No': str(r['House B/L No']).strip(),
-                                    'ETD': etd_str,
-                                    '품목': item_val.strip()
-                                }
-                                if pod_code == "ALL":
-                                    item_dict = {'POD': cur_pod, **item_dict}
-                                all_matched_rows.append(item_dict)
-            except Exception as e:
-                pass
-                
-        if search_query.strip():
+                        if is_match:
+                            etd_str = str(r['ETD']).split(' ')[0] if pd.notna(r['ETD']) else ""
+                            item_dict = {
+                                'House B/L No': str(r['House B/L No']).strip(),
+                                'ETD': etd_str,
+                                '품목': item_val.strip()
+                            }
+                            if pod_code == "ALL":
+                                item_dict = {'POD': cur_pod, **item_dict}
+                            all_matched_rows.append(item_dict)
+                    
             if all_matched_rows:
                 out_df = pd.DataFrame(all_matched_rows)
                 st.subheader(f"🔍 검색 결과 ({len(out_df)}건)")
@@ -729,9 +741,9 @@ with tab_history:
             else:
                 st.info("검색 조건에 맞는 이력이 없습니다.")
         else:
-            st.write("💡 HS CODE 또는 품목명을 입력 후 Enter를 누르거나 [🔍 검색] 버튼을 누르면 해당 POD의 진행 이력을 검색합니다.")
+            st.warning("저장된 이력 엑셀 파일이 없습니다. (루트 폴더에 포트코드.xlsx 파일을 넣어주세요)")
     else:
-        st.warning("저장된 이력 엑셀 파일이 없습니다. (루트 폴더에 포트코드.xlsx 파일을 넣어주세요)")
+        st.write("💡 HS CODE 또는 품목명을 입력 후 Enter를 누르거나 [🔍 검색] 버튼을 누르면 해당 POD의 진행 이력을 검색합니다.")
 
 # ==========================================
 # TAB 5: 업로드 기록
