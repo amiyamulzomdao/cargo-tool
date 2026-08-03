@@ -65,7 +65,7 @@ def format_date_ist(v):
     except:
         return str(v).split(' ')[0]
 
-# ⭐ [IST CONSOL 전용] 회사명 정제 파서 (NIPPON / 터키 특수문자 / A.S. / A. S. 완전 통합 해결) ⭐
+# ⭐ [IST CONSOL 전용] 회사명 정제 파서 (주소 자동 제거 & 대행 구문 분리 정밀 고도화) ⭐
 def clean_company_name(text, is_pus=False, is_shipper=True):
     if not text or pd.isna(text) or not str(text).strip():
         return ""
@@ -91,15 +91,33 @@ def clean_company_name(text, is_pus=False, is_shipper=True):
         
     full_text = " ".join(target_lines)
     
-    # 1. 서두에 위치하는 대행/대리 표현 정밀 제거 (독립 구문만 제거)
+    # 1. 중간/서두 대행/위임 구문 패턴 제거 (이 구문 이후는 전부 잘라냄)
+    sub_agent_patterns = [
+        r"\bAS\s+AGENTS?\s+(FOR\s+AND\s+ON\s+BEHALF\s+OF|FOR|OF)\b.*$",
+        r"\bON\s+BEHALF\s+OF\b.*$",
+        r"\bAS\s+AGENTS?\b.*$"
+    ]
+    for ptn in sub_agent_patterns:
+        full_text = re.sub(ptn, "", full_text, flags=re.IGNORECASE).strip()
+        
+    # 2. 서두에 남아있는 O/B 수식어 제거
     prefixes = [
-        r"^O/B\b\s*", r"^O/B:\s*",
-        r"^AS\s+AGENTS?\s+OF\b\s*", r"^AS\s+AGENTS?\s+FOR\b\s*", r"^AS\s+AGENTS?\b\s*", r"^AS\s+AGENT\b\s*",
-        r"^ON\s+BEHALF\s+OF\b\s*", r"^OB\b\s*", r"^OB:\s*"
+        r"^O/B\b\s*", r"^O/B:\s*", r"^OB\b\s*", r"^OB:\s*"
     ]
     for ptn in prefixes:
         full_text = re.sub(ptn, "", full_text, flags=re.IGNORECASE).strip()
         
+    # 3. 주소지 / 건물명 / 층수 / TEL / FAX 자동 제거
+    addr_patterns = [
+        r"\b(TEL|FAX|PHONE|TEL:|FAX:)\b.*$",
+        r"\b\d{1,4}[Ff]\b.*$",  # 19F, 2F 등
+        r"\b(BLDG|BUILDING|FLOOR|STREET|DISTRICT|ROAD|ZIP)\b.*$",
+        r"\b\d{3}-\d{4}\b.*$",  # 우편번호 (541-0052)
+        r"\b\d+-\d+-\d+\b.*$"   # 번지수 (2-3-13)
+    ]
+    for ptn in addr_patterns:
+        full_text = re.sub(ptn, "", full_text, flags=re.IGNORECASE).strip()
+
     # 터키어 특수문자 표준 정규화 함수 (Ş->S, İ->I 등)
     def normalize_tr(s):
         tr_map = str.maketrans("ŞİÇĞÖÜşiçğöüIı", "SICGOUsicgouIi")
@@ -109,7 +127,7 @@ def clean_company_name(text, is_pus=False, is_shipper=True):
         r"LTD\.", r"LIMITED", r"A\.S\.", r"A\.S", r"A\.Ş\.", r"A\.Ş", r"\bAS\b", r"\bAŞ\b",
         r"INC\.", r"STI\.", r"STI", r"ŞTI\.", r"ŞTI", r"CO\.,\s*LTD\.", r"CORP\.", r"CORPORATION",
         r"TICARET", r"TIC\.", r"SANAYI", r"SAN\.", r"LOJISTIK", r"LOJ\.", r"HIZMETLERI", r"HIZ\.",
-        r"VE", r"TAS\.", r"TAS", r"TAŞ\.", r"TAŞ"
+        r"VE", r"TAS\.", r"TAS", r"TAŞ\.", r"TAŞ", r"OCEAN", r"TURKEY", r"TEC\."
     ]
     
     words = full_text.split()
@@ -118,11 +136,11 @@ def clean_company_name(text, is_pus=False, is_shipper=True):
     for i, w in enumerate(words):
         w_norm = re.sub(r'[^A-Z\.]', '', normalize_tr(w))
         
-        # 2단어 구문 패턴 체크 (예: "A. S.", "A. S", "LTD. STI.")
+        # 2단어 구문 결합 체크 (예: "A. S.", "LTD. STI.", "TEC TURKEY", "LOJISTIK A.S")
         if i < len(words) - 1:
             w_next = re.sub(r'[^A-Z\.]', '', normalize_tr(words[i+1]))
             combined = w_norm + " " + w_next
-            if combined in ["A. S.", "A. S", "A. STI.", "LTD. STI.", "LIMITED STI.", "TIC. AS", "SAN. AS"]:
+            if combined in ["A. S.", "A. S", "A. STI.", "LTD. STI.", "LIMITED STI.", "TIC. AS", "SAN. AS", "TEC TURKEY", "LOJISTIK A.S", "LOJISTIK AS"]:
                 matched_idx = i + 1
                 continue
 
@@ -132,7 +150,6 @@ def clean_company_name(text, is_pus=False, is_shipper=True):
                 if i > matched_idx:
                     matched_idx = i
 
-    # 매칭된 법인 키워드 위치까지 가져오되, 매칭되지 않는 경우 전체 텍스트 보존
     if matched_idx != -1:
         comp_name = " ".join(words[:matched_idx+1])
     else:
@@ -141,6 +158,7 @@ def clean_company_name(text, is_pus=False, is_shipper=True):
     for ptn in prefixes:
         comp_name = re.sub(ptn, "", comp_name, flags=re.IGNORECASE).strip()
         
+    comp_name = comp_name.rstrip(', ').strip()
     return comp_name
 
 # [선적이력 최적화] 지연 로딩 & 캐싱 파서 함수
