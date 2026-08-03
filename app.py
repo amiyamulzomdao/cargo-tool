@@ -65,7 +65,7 @@ def format_date_ist(v):
     except:
         return str(v).split(' ')[0]
 
-# ⭐ [IST CONSOL 전용] 회사명 정제 파서 (주소 자동 제거 & 대행 구문 분리 정밀 고도화) ⭐
+# ⭐ [IST CONSOL 전용] 회사명 정제 파서 (ROTORK / TIC.AS / 터키주소 자르기 정밀 완벽 교정) ⭐
 def clean_company_name(text, is_pus=False, is_shipper=True):
     if not text or pd.isna(text) or not str(text).strip():
         return ""
@@ -91,6 +91,11 @@ def clean_company_name(text, is_pus=False, is_shipper=True):
         
     full_text = " ".join(target_lines)
     
+    # 0. 붙어있는 TIC.AS / LTD.STI 띄어쓰기 교정
+    full_text = re.sub(r'TIC\.AS\b', 'TIC. AS', full_text, flags=re.IGNORECASE)
+    full_text = re.sub(r'TIC\.A\.S\b', 'TIC. A.S.', full_text, flags=re.IGNORECASE)
+    full_text = re.sub(r'LTD\.STI\b', 'LTD. STI.', full_text, flags=re.IGNORECASE)
+    
     # 1. 중간/서두 대행/위임 구문 패턴 제거 (이 구문 이후는 전부 잘라냄)
     sub_agent_patterns = [
         r"\bAS\s+AGENTS?\s+(FOR\s+AND\s+ON\s+BEHALF\s+OF|FOR|OF)\b.*$",
@@ -100,18 +105,19 @@ def clean_company_name(text, is_pus=False, is_shipper=True):
     for ptn in sub_agent_patterns:
         full_text = re.sub(ptn, "", full_text, flags=re.IGNORECASE).strip()
         
-    # 2. 서두에 남아있는 O/B 수식어 제거
     prefixes = [
         r"^O/B\b\s*", r"^O/B:\s*", r"^OB\b\s*", r"^OB:\s*"
     ]
     for ptn in prefixes:
         full_text = re.sub(ptn, "", full_text, flags=re.IGNORECASE).strip()
         
-    # 3. 주소지 / 건물명 / 층수 / TEL / FAX 자동 제거
+    # 2. 주소지 / 터키 도로명 / 구 / 우편번호 / 전화/팩스 키워드 위치 이후 자르기
     addr_patterns = [
         r"\b(TEL|FAX|PHONE|TEL:|FAX:)\b.*$",
         r"\b\d{1,4}[Ff]\b.*$",  # 19F, 2F 등
-        r"\b(BLDG|BUILDING|FLOOR|STREET|DISTRICT|ROAD|ZIP)\b.*$",
+        r"\b(BLDG|BUILDING|FLOOR|STREET|DISTRICT|ROAD|ZIP|KARAYOLU|MAH\.|MAHALLESI|SERPMELERI|SERPMELER|CAD\.|CADDESI|SOK\.|SOKAK)\b.*$",
+        r"\b\d{3,5}\s+(ANKARA|ISTANBUL|IZMIR|BURSA|TURKEY)\b.*$",
+        r"\b\d{3,5},?\s*ANKARA\b.*$",
         r"\b\d{3}-\d{4}\b.*$",  # 우편번호 (541-0052)
         r"\b\d+-\d+-\d+\b.*$"   # 번지수 (2-3-13)
     ]
@@ -123,9 +129,13 @@ def clean_company_name(text, is_pus=False, is_shipper=True):
         tr_map = str.maketrans("ŞİÇĞÖÜşiçğöüIı", "SICGOUsicgouIi")
         return s.translate(tr_map).upper()
         
-    suffixes = [
+    primary_legal_suffixes = [
         r"LTD\.", r"LIMITED", r"A\.S\.", r"A\.S", r"A\.Ş\.", r"A\.Ş", r"\bAS\b", r"\bAŞ\b",
         r"INC\.", r"STI\.", r"STI", r"ŞTI\.", r"ŞTI", r"CO\.,\s*LTD\.", r"CORP\.", r"CORPORATION",
+        r"SISTEMLERI", r"SISTEM"
+    ]
+    
+    secondary_suffixes = [
         r"TICARET", r"TIC\.", r"SANAYI", r"SAN\.", r"LOJISTIK", r"LOJ\.", r"HIZMETLERI", r"HIZ\.",
         r"VE", r"TAS\.", r"TAS", r"TAŞ\.", r"TAŞ", r"OCEAN", r"TURKEY", r"TEC\."
     ]
@@ -133,22 +143,32 @@ def clean_company_name(text, is_pus=False, is_shipper=True):
     words = full_text.split()
     matched_idx = -1
     
+    # 1차 매칭: 주요 법인 식별 키워드
     for i, w in enumerate(words):
         w_norm = re.sub(r'[^A-Z\.]', '', normalize_tr(w))
         
-        # 2단어 구문 결합 체크 (예: "A. S.", "LTD. STI.", "TEC TURKEY", "LOJISTIK A.S")
         if i < len(words) - 1:
             w_next = re.sub(r'[^A-Z\.]', '', normalize_tr(words[i+1]))
             combined = w_norm + " " + w_next
-            if combined in ["A. S.", "A. S", "A. STI.", "LTD. STI.", "LIMITED STI.", "TIC. AS", "SAN. AS", "TEC TURKEY", "LOJISTIK A.S", "LOJISTIK AS"]:
+            if combined in ["A. S.", "A. S", "A. STI.", "LTD. STI.", "LIMITED STI.", "TIC. AS", "SAN. AS", "TEC TURKEY", "LOJISTIK A.S", "LOJISTIK AS", "TIC.AS", "SISTEMLERI"]:
                 matched_idx = i + 1
                 continue
 
-        for sfx in suffixes:
+        for sfx in primary_legal_suffixes:
             s_clean = re.sub(r'[^A-Z\.]', '', normalize_tr(sfx))
             if s_clean and (w_norm == s_clean or w_norm.endswith(s_clean)):
                 if i > matched_idx:
                     matched_idx = i
+
+    # 2차 매칭: 업태 키워드 보조 매칭
+    if matched_idx == -1:
+        for i, w in enumerate(words):
+            w_norm = re.sub(r'[^A-Z\.]', '', normalize_tr(w))
+            for sfx in secondary_suffixes:
+                s_clean = re.sub(r'[^A-Z\.]', '', normalize_tr(sfx))
+                if s_clean and (w_norm == s_clean or w_norm.endswith(s_clean)):
+                    if i > matched_idx:
+                        matched_idx = i
 
     if matched_idx != -1:
         comp_name = " ".join(words[:matched_idx+1])
