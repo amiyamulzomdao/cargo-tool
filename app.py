@@ -227,7 +227,7 @@ st.title("🚢 Europe Docs tool")
 tab1, tab_ceva, tab_ist, tab_history, tab2 = st.tabs(["SR 정정", "CEVA(LEH)", "IST CONSOL", "선적이력", "업로드 기록"])
 
 # ==========================================
-# TAB 1: SR 정정 (누락된 HBL 공란 경고 포함)
+# TAB 1: SR 정정
 # ==========================================
 with tab1:
     col_up1, col_up2, col_opt = st.columns([1.0, 1.5, 0.8])
@@ -257,6 +257,7 @@ with tab1:
                         if unit_sr == "GT":
                             warning_messages.append(f"⚠️ {h_no_sr}: 단위가 GT 입니다.")
 
+            # ⭐ 2번 파일(품목 파일)이 실제로 업로드된 경우에만 품목/HS 검증 수행 ⭐
             if item_file:
                 log_uploaded_filename(item_file.name, "ITEM")
                 item_df = pd.read_excel(item_file, header=1)
@@ -315,12 +316,11 @@ with tab1:
                                 if clean_hs == "242400":
                                     warning_messages.append(f"⚠️ {h_no}: 유효하지 않은 HS CODE / HOUSEHOLD GOODS 는 9905.00 을 써주세요.")
 
-            # ⭐ SR 파일(셀 파일)에는 존재하지만 item_file(GDN 파일)에 아예 누락된 HBL 검증 추가 ⭐
-            if "House B/L No" in sr_df.columns:
-                all_sr_hbls = sr_df["House B/L No"].dropna().astype(str).str.strip().unique()
-                for h_no in all_sr_hbls:
-                    if h_no and h_no != "nan" and h_no not in item_dict:
-                        warning_messages.append(f"⚠️ {h_no}: 품목, HS CODE 가 공란입니다!")
+                if "House B/L No" in sr_df.columns:
+                    all_sr_hbls = sr_df["House B/L No"].dropna().astype(str).str.strip().unique()
+                    for h_no in all_sr_hbls:
+                        if h_no and h_no != "nan" and h_no not in item_dict:
+                            warning_messages.append(f"⚠️ {h_no}: 품목, HS CODE 가 공란입니다!")
 
             cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
             df = sr_df[cols].copy().dropna(subset=['House B/L No'])
@@ -536,7 +536,7 @@ with tab_ist:
                 ws["J2"].border = Border(top=thin_side, bottom=med_side, left=med_side)
                 ws["L2"].border = Border(top=thin_side, bottom=med_side, right=med_side)
 
-                ws["M2"] = "MSC"; ws["M2"].font = font_calibri_regular; ws["M2"].alignment = align_center; ws["M2"].border = Border(top=thin_side, bottom=med_side, left=thin_side, right=med_side)
+                ws["M2"] = "MSC"; ws["M2"].font = font_calibri_regular; ws["M2"].alignment = align_center; ws["M2"].border = Border(top=thin_side, bottom=med_side, left=med_side, right=med_side)
 
                 ws["A3"] = "POL"; ws["A3"].font = font_calibri_bold
                 ws["B3"] = "BUSAN "; ws["B3"].font = font_calibri_bold
