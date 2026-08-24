@@ -257,7 +257,6 @@ with tab1:
                         if unit_sr == "GT":
                             warning_messages.append(f"⚠️ {h_no_sr}: 단위가 GT 입니다.")
 
-            # ⭐ 2번 파일(품목 파일)이 실제로 업로드된 경우에만 품목/HS 검증 수행 ⭐
             if item_file:
                 log_uploaded_filename(item_file.name, "ITEM")
                 item_df = pd.read_excel(item_file, header=1)
@@ -536,7 +535,7 @@ with tab_ist:
                 ws["J2"].border = Border(top=thin_side, bottom=med_side, left=med_side)
                 ws["L2"].border = Border(top=thin_side, bottom=med_side, right=med_side)
 
-                ws["M2"] = "MSC"; ws["M2"].font = font_calibri_regular; ws["M2"].alignment = align_center; ws["M2"].border = Border(top=thin_side, bottom=med_side, left=med_side, right=med_side)
+                ws["M2"] = "MSC"; ws["M2"].font = font_calibri_regular; ws["M2"].alignment = align_center; ws["M2"].border = Border(top=thin_side, bottom=med_side, left=thin_side, right=thin_side)
 
                 ws["A3"] = "POL"; ws["A3"].font = font_calibri_bold
                 ws["B3"] = "BUSAN "; ws["B3"].font = font_calibri_bold
@@ -715,8 +714,17 @@ with tab_history:
         search_digits = re.sub(r'[^0-9]', '', search_upper)
         history_warnings = []
 
+        # ⭐ HS CODE 2008.99 / 200899 (Seaweed / 김) 경고문 추가 ⭐
         if "200899" in search_digits or "2008.99" in search_upper:
-            history_warnings.append("⚠️ 2008.99-9000 EU 관세 품목 분류에 등록 되지 않은 코드")
+            history_warnings.append("⚠️ HS CODE 2008.99 면 seaweed(김) 도착지 검사로 선적안됨. 1212.21 사용가능")
+        if "200899" not in search_digits and "2008.99" not in search_upper:
+            if "200899" in search_digits or "2008.99" in search_upper:
+                pass
+
+        if "200899" in search_digits or "2008.99" in search_upper:
+            pass # 위에서 처리됨
+        
+        # 기존 경고들 유지
         if "242400" in search_digits or "2424.00" in search_upper:
             history_warnings.append("⚠️ 유효하지 않은 HS CODE / HOUSEHOLD GOODS 는 9905.00 을 써주세요.")
         if "MAGNET" in search_upper or "자성" in search_upper:
