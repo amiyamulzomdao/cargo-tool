@@ -227,7 +227,7 @@ st.title("🚢 Europe Docs tool")
 tab1, tab_ceva, tab_ist, tab_history, tab2 = st.tabs(["SR 정정", "CEVA(LEH)", "IST CONSOL", "선적이력", "업로드 기록"])
 
 # ==========================================
-# TAB 1: SR 정정
+# TAB 1: SR 정정 (HOUSEHOLD GOODS 방식과 동일하게 2008.99 감지 추가)
 # ==========================================
 with tab1:
     col_up1, col_up2, col_opt = st.columns([1.0, 1.5, 0.8])
@@ -314,6 +314,9 @@ with tab1:
                                 clean_hs = str(detected_hs).replace(".", "").replace(" ", "")
                                 if clean_hs == "242400":
                                     warning_messages.append(f"⚠️ {h_no}: 유효하지 않은 HS CODE / HOUSEHOLD GOODS 는 9905.00 을 써주세요.")
+                                # ⭐ HOUSEHOLD GOODS와 완전히 동일한 검사 방식으로 2008.99 (Seaweed/김) 경고 추가 ⭐
+                                elif clean_hs == "200899" or "2008.99" in str(detected_hs):
+                                    warning_messages.append(f"⚠️ {h_no}: HS CODE 2008.99 면 seaweed(김) 도착지 검사로 선적안됨. 1212.21 사용가능")
 
                 if "House B/L No" in sr_df.columns:
                     all_sr_hbls = sr_df["House B/L No"].dropna().astype(str).str.strip().unique()
@@ -535,7 +538,7 @@ with tab_ist:
                 ws["J2"].border = Border(top=thin_side, bottom=med_side, left=med_side)
                 ws["L2"].border = Border(top=thin_side, bottom=med_side, right=med_side)
 
-                ws["M2"] = "MSC"; ws["M2"].font = font_calibri_regular; ws["M2"].alignment = align_center; ws["M2"].border = Border(top=thin_side, bottom=med_side, left=med_side, right=med_side)
+                ws["M2"] = "MSC"; ws["M2"].font = font_calibri_regular; ws["M2"].alignment = align_center; ws["M2"].border = Border(top=thin_side, bottom=med_side, left=thin_side, right=thin_side)
 
                 ws["A3"] = "POL"; ws["A3"].font = font_calibri_bold
                 ws["B3"] = "BUSAN "; ws["B3"].font = font_calibri_bold
@@ -714,7 +717,7 @@ with tab_history:
         search_digits = re.sub(r'[^0-9]', '', search_upper)
         history_warnings = []
 
-        # ⭐ HS CODE 2008.99 / 200899 (Seaweed / 김) 경고문 추가 ⭐
+        # ⭐ HOUSEHOLD GOODS와 동일한 검사 방식으로 HS CODE 2008.99 / 200899 (Seaweed / 김) 경고 추가 ⭐
         if "200899" in search_digits or "2008.99" in search_upper:
             history_warnings.append("⚠️ HS CODE 2008.99 면 seaweed(김) 도착지 검사로 선적안됨. 1212.21 사용가능")
 
