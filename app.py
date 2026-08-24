@@ -535,7 +535,7 @@ with tab_ist:
                 ws["J2"].border = Border(top=thin_side, bottom=med_side, left=med_side)
                 ws["L2"].border = Border(top=thin_side, bottom=med_side, right=med_side)
 
-                ws["M2"] = "MSC"; ws["M2"].font = font_calibri_regular; ws["M2"].alignment = align_center; ws["M2"].border = Border(top=thin_side, bottom=med_side, left=thin_side, right=thin_side)
+                ws["M2"] = "MSC"; ws["M2"].font = font_calibri_regular; ws["M2"].alignment = align_center; ws["M2"].border = Border(top=thin_side, bottom=med_side, left=med_side, right=med_side)
 
                 ws["A3"] = "POL"; ws["A3"].font = font_calibri_bold
                 ws["B3"] = "BUSAN "; ws["B3"].font = font_calibri_bold
@@ -717,13 +717,7 @@ with tab_history:
         # ⭐ HS CODE 2008.99 / 200899 (Seaweed / 김) 경고문 추가 ⭐
         if "200899" in search_digits or "2008.99" in search_upper:
             history_warnings.append("⚠️ HS CODE 2008.99 면 seaweed(김) 도착지 검사로 선적안됨. 1212.21 사용가능")
-        if "200899" not in search_digits and "2008.99" not in search_upper:
-            if "200899" in search_digits or "2008.99" in search_upper:
-                pass
 
-        if "200899" in search_digits or "2008.99" in search_upper:
-            pass # 위에서 처리됨
-        
         # 기존 경고들 유지
         if "242400" in search_digits or "2424.00" in search_upper:
             history_warnings.append("⚠️ 유효하지 않은 HS CODE / HOUSEHOLD GOODS 는 9905.00 을 써주세요.")
