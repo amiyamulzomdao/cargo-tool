@@ -65,7 +65,7 @@ def format_date_ist(v):
     except:
         return str(v).split(' ')[0]
 
-# ⭐ [IST CONSOL 전용] 회사명 정제 파서 (NIPPON 2줄 누락 오류 완벽 해결 버전) ⭐
+# [IST CONSOL 전용] 회사명 정제 파서
 def clean_company_name(text, is_pus=False, is_shipper=True):
     if not text or pd.isna(text) or not str(text).strip():
         return ""
@@ -84,7 +84,6 @@ def clean_company_name(text, is_pus=False, is_shipper=True):
             else:
                 target_lines = lines[1:] if len(lines) > 1 else lines
         else:
-            # Consignee / Notify에서도 NIPPON으로 시작하거나 멀티라인 회사명인 경우 모든 줄 파싱
             target_lines = lines
             
     if not target_lines:
@@ -92,13 +91,11 @@ def clean_company_name(text, is_pus=False, is_shipper=True):
         
     full_text = " ".join(target_lines)
     
-    # 0. 붙어있는 TIC.AS / LTD.STI / LOJISTIK.AS 띄어쓰기 교정
     full_text = re.sub(r'TIC\.AS\b', 'TIC. AS', full_text, flags=re.IGNORECASE)
     full_text = re.sub(r'TIC\.A\.S\b', 'TIC. A.S.', full_text, flags=re.IGNORECASE)
     full_text = re.sub(r'LTD\.STI\b', 'LTD. STI.', full_text, flags=re.IGNORECASE)
     full_text = re.sub(r'LOJISTIK\.AS\b', 'LOJISTIK A.S.', full_text, flags=re.IGNORECASE)
     
-    # 1. 중간/서두 대행/위임 구문 패턴 제거 (이 구문 이후는 전부 잘라냄)
     sub_agent_patterns = [
         r"\bAS\s+AGENTS?\s+(FOR\s+AND\s+ON\s+BEHALF\s+OF|FOR|OF)\b.*$",
         r"\bON\s+BEHALF\s+OF\b.*$",
@@ -113,20 +110,18 @@ def clean_company_name(text, is_pus=False, is_shipper=True):
     for ptn in prefixes:
         full_text = re.sub(ptn, "", full_text, flags=re.IGNORECASE).strip()
         
-    # 2. 주소지 / 터키 도로명 / 구 / 우편번호 / 전화/팩스 키워드 위치 이후 자르기
     addr_patterns = [
         r"\b(TEL|FAX|PHONE|TEL:|FAX:)\b.*$",
-        r"\b\d{1,4}[Ff]\b.*$",  # 19F, 2F 등
+        r"\b\d{1,4}[Ff]\b.*$",
         r"\b(BLDG|BUILDING|FLOOR|STREET|DISTRICT|ROAD|ZIP|KARAYOLU|MAH\.|MAHALLESI|SERPMELERI|SERPMELER|CAD\.|CADDESI|SOK\.|SOKAK)\b.*$",
         r"\b\d{3,5}\s+(ANKARA|ISTANBUL|IZMIR|BURSA|TURKEY)\b.*$",
         r"\b\d{3,5},?\s*ANKARA\b.*$",
-        r"\b\d{3}-\d{4}\b.*$",  # 우편번호 (541-0052)
-        r"\b\d+-\d+-\d+\b.*$"   # 번지수 (2-3-13)
+        r"\b\d{3}-\d{4}\b.*$",
+        r"\b\d+-\d+-\d+\b.*$"
     ]
     for ptn in addr_patterns:
         full_text = re.sub(ptn, "", full_text, flags=re.IGNORECASE).strip()
 
-    # 터키어 특수문자 표준 정규화 함수 (Ş->S, İ->I 등)
     def normalize_tr(s):
         tr_map = str.maketrans("ŞİÇĞÖÜşiçğöüIı", "SICGOUsicgouIi")
         return s.translate(tr_map).upper()
@@ -145,7 +140,6 @@ def clean_company_name(text, is_pus=False, is_shipper=True):
     words = full_text.split()
     matched_idx = -1
     
-    # 1차 매칭: 주요 법인 식별 키워드
     for i, w in enumerate(words):
         w_norm = re.sub(r'[^A-Z\.]', '', normalize_tr(w))
         
@@ -162,7 +156,6 @@ def clean_company_name(text, is_pus=False, is_shipper=True):
                 if i > matched_idx:
                     matched_idx = i
 
-    # 2차 매칭: 업태 키워드 보조 매칭
     if matched_idx == -1:
         for i, w in enumerate(words):
             w_norm = re.sub(r'[^A-Z\.]', '', normalize_tr(w))
@@ -234,7 +227,7 @@ st.title("🚢 Europe Docs tool")
 tab1, tab_ceva, tab_ist, tab_history, tab2 = st.tabs(["SR 정정", "CEVA(LEH)", "IST CONSOL", "선적이력", "업로드 기록"])
 
 # ==========================================
-# TAB 1: SR 정정 (Cargo Tool 7 - 대원칙 보존)
+# TAB 1: SR 정정 (누락된 HBL 공란 경고 포함)
 # ==========================================
 with tab1:
     col_up1, col_up2, col_opt = st.columns([1.0, 1.5, 0.8])
@@ -321,6 +314,13 @@ with tab1:
                                 clean_hs = str(detected_hs).replace(".", "").replace(" ", "")
                                 if clean_hs == "242400":
                                     warning_messages.append(f"⚠️ {h_no}: 유효하지 않은 HS CODE / HOUSEHOLD GOODS 는 9905.00 을 써주세요.")
+
+            # ⭐ SR 파일(셀 파일)에는 존재하지만 item_file(GDN 파일)에 아예 누락된 HBL 검증 추가 ⭐
+            if "House B/L No" in sr_df.columns:
+                all_sr_hbls = sr_df["House B/L No"].dropna().astype(str).str.strip().unique()
+                for h_no in all_sr_hbls:
+                    if h_no and h_no != "nan" and h_no not in item_dict:
+                        warning_messages.append(f"⚠️ {h_no}: 품목, HS CODE 가 공란입니다!")
 
             cols = ['House B/L No', '컨테이너 번호', 'Seal#1', '포장갯수', '단위', 'Weight', 'Measure']
             df = sr_df[cols].copy().dropna(subset=['House B/L No'])
@@ -536,7 +536,7 @@ with tab_ist:
                 ws["J2"].border = Border(top=thin_side, bottom=med_side, left=med_side)
                 ws["L2"].border = Border(top=thin_side, bottom=med_side, right=med_side)
 
-                ws["M2"] = "MSC"; ws["M2"].font = font_calibri_regular; ws["M2"].alignment = align_center; ws["M2"].border = Border(top=thin_side, bottom=med_side, left=med_side, right=med_side)
+                ws["M2"] = "MSC"; ws["M2"].font = font_calibri_regular; ws["M2"].alignment = align_center; ws["M2"].border = Border(top=thin_side, bottom=med_side, left=thin_side, right=med_side)
 
                 ws["A3"] = "POL"; ws["A3"].font = font_calibri_bold
                 ws["B3"] = "BUSAN "; ws["B3"].font = font_calibri_bold
