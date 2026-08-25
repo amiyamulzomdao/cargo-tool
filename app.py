@@ -220,14 +220,14 @@ POD_LIST = [
 POD_OPTIONS = [f"{country} ({code})" if code != "ALL" else "전체 (ALL)" for country, code in POD_LIST]
 
 # --- 2. 페이지 설정 ---
-st.set_page_config(page_title="Europe Docs tool (Cargo Tool 7)", layout="wide")
+st.set_page_config(page_title="Europe Docs tool (Cargo Tool 8)", layout="wide")
 st.title("🚢 Europe Docs tool")
 
 # 탭 생성
 tab1, tab_ceva, tab_ist, tab_history, tab2 = st.tabs(["SR 정정", "CEVA(LEH)", "IST CONSOL", "선적이력", "업로드 기록"])
 
 # ==========================================
-# TAB 1: SR 정정 (HOUSEHOLD GOODS 방식과 동일하게 2008.99 감지 추가)
+# TAB 1: SR 정정
 # ==========================================
 with tab1:
     col_up1, col_up2, col_opt = st.columns([1.0, 1.5, 0.8])
@@ -262,6 +262,11 @@ with tab1:
                 item_df = pd.read_excel(item_file, header=1)
                 item_df.columns = [str(c).strip() for c in item_df.columns]
                 
+                # 컨테이너 개수 파악을 위한 준비 (SR 파일 내 고유 컨테이너 수)
+                total_cntr_count = 1
+                if "컨테이너 번호" in sr_df.columns:
+                    total_cntr_count = sr_df["컨테이너 번호"].nunique()
+
                 if "House B/L No" in item_df.columns and "품목" in item_df.columns:
                     for _, row in item_df.iterrows():
                         h_no = str(row["House B/L No"]).strip()
@@ -287,7 +292,9 @@ with tab1:
                                     if re.match(r'^[0-9.]{4,10}$', all_lines[i]) and not re.match(r'^[0-9.]{4,10}$', all_lines[i+1]):
                                         has_multiple = True
                                         break
-                            if has_multiple:
+                            
+                            # ⭐ 컨테이너가 2대 이상일 때만 다중 품목 경고 부여 ⭐
+                            if has_multiple and total_cntr_count >= 2:
                                 warning_messages.append(f"📢 {h_no}: 다중 품목 -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
 
                             is_desc_empty = not detected_desc_pure or detected_desc_pure.lower() == "nan" or detected_desc_pure.strip() == ""
@@ -314,7 +321,6 @@ with tab1:
                                 clean_hs = str(detected_hs).replace(".", "").replace(" ", "")
                                 if clean_hs == "242400":
                                     warning_messages.append(f"⚠️ {h_no}: 유효하지 않은 HS CODE / HOUSEHOLD GOODS 는 9905.00 을 써주세요.")
-                                # ⭐ HOUSEHOLD GOODS와 완전히 동일한 검사 방식으로 2008.99 (Seaweed/김) 경고 추가 ⭐
                                 elif clean_hs == "200899" or "2008.99" in str(detected_hs):
                                     warning_messages.append(f"⚠️ {h_no}: HS CODE 2008.99 면 seaweed(김) 도착지 검사로 선적안됨. 1212.21 사용가능")
 
@@ -538,7 +544,7 @@ with tab_ist:
                 ws["J2"].border = Border(top=thin_side, bottom=med_side, left=med_side)
                 ws["L2"].border = Border(top=thin_side, bottom=med_side, right=med_side)
 
-                ws["M2"] = "MSC"; ws["M2"].font = font_calibri_regular; ws["M2"].alignment = align_center; ws["M2"].border = Border(top=thin_side, bottom=med_side, left=thin_side, right=thin_side)
+                ws["M2"] = "MSC"; ws["M2"].font = font_calibri_regular; ws["M2"].alignment = align_center; ws["M2"].border = Border(top=thin_side, bottom=med_side, left=thin_side, right=med_side)
 
                 ws["A3"] = "POL"; ws["A3"].font = font_calibri_bold
                 ws["B3"] = "BUSAN "; ws["B3"].font = font_calibri_bold
@@ -717,11 +723,9 @@ with tab_history:
         search_digits = re.sub(r'[^0-9]', '', search_upper)
         history_warnings = []
 
-        # ⭐ HOUSEHOLD GOODS와 동일한 검사 방식으로 HS CODE 2008.99 / 200899 (Seaweed / 김) 경고 추가 ⭐
         if "200899" in search_digits or "2008.99" in search_upper:
             history_warnings.append("⚠️ HS CODE 2008.99 면 seaweed(김) 도착지 검사로 선적안됨. 1212.21 사용가능")
 
-        # 기존 경고들 유지
         if "242400" in search_digits or "2424.00" in search_upper:
             history_warnings.append("⚠️ 유효하지 않은 HS CODE / HOUSEHOLD GOODS 는 9905.00 을 써주세요.")
         if "MAGNET" in search_upper or "자성" in search_upper:
@@ -805,7 +809,7 @@ with tab_history:
                     height=500
                 )
             else:
-                st.info("검색 조건에 맞는 이력이 없습니다.")
+                st.info("검요청조건에 맞는 이력이 없습니다.")
         else:
             st.warning("저장된 이력 엑셀 파일이 없습니다. (루트 폴더에 포트코드.xlsx 파일을 넣어주세요)")
     else:
