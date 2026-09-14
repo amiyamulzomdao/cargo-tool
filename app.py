@@ -23,7 +23,17 @@ def format_number(v):
         return t.rstrip('0').rstrip('.') if '.' in t else t
     except: return str(v)
 
+# 세션 스테이트를 활용하여 세션 당 동일 파일/카테고리 중복 기록 방지
 def log_uploaded_filename(fn, category="SR"):
+    if "logged_files" not in st.session_state:
+        st.session_state.logged_files = set()
+    
+    key = (category, fn)
+    if key in st.session_state.logged_files:
+        return
+    
+    st.session_state.logged_files.add(key)
+    
     p = "upload_log.txt"
     kst = timezone(timedelta(hours=9))
     now = datetime.now(kst).strftime("%Y-%m-%d %H:%M:%S")
@@ -262,7 +272,6 @@ with tab1:
                 item_df = pd.read_excel(item_file, header=1)
                 item_df.columns = [str(c).strip() for c in item_df.columns]
                 
-                # 컨테이너 개수 파악을 위한 준비 (SR 파일 내 고유 컨테이너 수)
                 total_cntr_count = 1
                 if "컨테이너 번호" in sr_df.columns:
                     total_cntr_count = sr_df["컨테이너 번호"].nunique()
@@ -293,7 +302,6 @@ with tab1:
                                         has_multiple = True
                                         break
                             
-                            # ⭐ 컨테이너가 2대 이상일 때만 다중 품목 경고 부여 ⭐
                             if has_multiple and total_cntr_count >= 2:
                                 warning_messages.append(f"📢 {h_no}: 다중 품목 -> 수기로 컨테이너 별 품목을 나눠주세요ㅎㅎ")
 
@@ -390,7 +398,7 @@ with tab1:
         except Exception as e: st.error(f"오류 발생: {e}")
 
 # ==========================================
-# TAB 2: CEVA(LEH)
+# TAB 2: CEVA(LEH) (8~12번째 세트 확장 반영)
 # ==========================================
 with tab_ceva:
     col_ceva_up = st.columns([1])[0]
@@ -406,14 +414,22 @@ with tab_ceva:
                     return str(v).strip() if pd.notna(v) else ""
                 except: return ""
             
+            # ⭐ 1번째부터 12번째 세트까지 확장 정의 (+9행 규칙 완벽 적용) ⭐
             sets = [
+                # 1~7번째 세트 (기존)
                 {"qty": (35,8), "unit": (35,14), "wgt": (36,8), "cbm": (37,8), "hc": (38,4), "mark": (36,16), "desc": (36,34)},
                 {"qty": (44,8), "unit": (44,14), "wgt": (45,8), "cbm": (46,8), "hc": (47,4), "mark": (45,16), "desc": (45,34)},
                 {"qty": (58,8), "unit": (58,14), "wgt": (59,8), "cbm": (60,8), "hc": (61,4), "mark": (59,16), "desc": (59,34)},
                 {"qty": (67,8), "unit": (67,14), "wgt": (68,8), "cbm": (69,8), "hc": (70,4), "mark": (68,16), "desc": (68,34)},
                 {"qty": (76,8), "unit": (76,14), "wgt": (77,8), "cbm": (78,8), "hc": (79,4), "mark": (77,16), "desc": (77,34)},
                 {"qty": (85,8), "unit": (85,14), "wgt": (86,8), "cbm": (87,8), "hc": (88,4), "mark": (86,16), "desc": (86,34)},
-                {"qty": (94,8), "unit": (94,14), "wgt": (95,8), "cbm": (96,8), "hc": (97,4), "mark": (95,16), "desc": (95,34)}
+                {"qty": (94,8), "unit": (94,14), "wgt": (95,8), "cbm": (96,8), "hc": (97,4), "mark": (95,16), "desc": (95,34)},
+                # 8~12번째 세트 (신규 추가)
+                {"qty": (103,8), "unit": (103,14), "wgt": (104,8), "cbm": (105,8), "hc": (106,4), "mark": (104,16), "desc": (104,34)},
+                {"qty": (112,8), "unit": (112,14), "wgt": (113,8), "cbm": (114,8), "hc": (115,4), "mark": (113,16), "desc": (113,34)},
+                {"qty": (121,8), "unit": (121,14), "wgt": (122,8), "cbm": (123,8), "hc": (124,4), "mark": (122,16), "desc": (122,34)},
+                {"qty": (130,8), "unit": (130,14), "wgt": (131,8), "cbm": (132,8), "hc": (133,4), "mark": (131,16), "desc": (131,34)},
+                {"qty": (139,8), "unit": (139,14), "wgt": (140,8), "cbm": (141,8), "hc": (142,4), "mark": (140,16), "desc": (140,34)}
             ]
             
             mark_lines, desc_lines = [], []
@@ -544,7 +560,7 @@ with tab_ist:
                 ws["J2"].border = Border(top=thin_side, bottom=med_side, left=med_side)
                 ws["L2"].border = Border(top=thin_side, bottom=med_side, right=med_side)
 
-                ws["M2"] = "MSC"; ws["M2"].font = font_calibri_regular; ws["M2"].alignment = align_center; ws["M2"].border = Border(top=thin_side, bottom=med_side, left=thin_side, right=med_side)
+                ws["M2"] = "MSC"; ws["M2"].font = font_calibri_regular; ws["M2"].alignment = align_center; ws["M2"].border = Border(top=thin_side, bottom=med_side, left=med_side, right=med_side)
 
                 ws["A3"] = "POL"; ws["A3"].font = font_calibri_bold
                 ws["B3"] = "BUSAN "; ws["B3"].font = font_calibri_bold
@@ -809,7 +825,7 @@ with tab_history:
                     height=500
                 )
             else:
-                st.info("검요청조건에 맞는 이력이 없습니다.")
+                st.info("검색 조건에 맞는 이력이 없습니다.")
         else:
             st.warning("저장된 이력 엑셀 파일이 없습니다. (루트 폴더에 포트코드.xlsx 파일을 넣어주세요)")
     else:
