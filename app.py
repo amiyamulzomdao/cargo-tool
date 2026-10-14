@@ -708,6 +708,12 @@ with tab_ist:
 
 # TAB 4: EI 입고
 with tab_ei:
+    europe_team_only = st.checkbox(
+        "유럽팀",
+        value=False,
+        key="ei_europe_team_only"
+    )
+
     ei_file = st.file_uploader(
         "입고 엑셀 파일 입력",
         type=["xlsx"],
@@ -743,6 +749,8 @@ with tab_ei:
                     "receive_date": ["입고일자", "Receive Date", "입고일", "입고 날짜"],
                     "receive_time": ["입고시간", "Receive Time", "입고 시각", "입고시각"],
                 }
+                if europe_team_only:
+                    required_aliases["requester"] = ["접수자", "접수 담당자", "담당자"]
 
                 best_match = None
                 for sheet_name in source_book.sheet_names:
@@ -784,6 +792,7 @@ with tab_ei:
                     "cbm": "CFS-CBM/CBM/VOL(CBM)",
                     "receive_date": "입고일자/Receive Date",
                     "receive_time": "입고시간/Receive Time",
+                    "requester": "접수자",
                 }
                 missing_text = ", ".join(display_names[key] for key in missing)
                 raise ValueError(
@@ -827,7 +836,13 @@ with tab_ei:
             data_df = ei_raw_df.iloc[header_idx + 1:].copy()
 
             output_rows = []
+            europe_team_members = {"조민경", "이연주", "최예은", "신채림"}
             for _, row in data_df.iterrows():
+                if europe_team_only:
+                    requester = str(row.iloc[ei_cols["requester"]]).strip()
+                    if requester not in europe_team_members:
+                        continue
+
                 hbl = extract_ei_hbl(row.iloc[ei_cols["hbl_source"]])
                 qty = row.iloc[ei_cols["qty"]]
                 weight = row.iloc[ei_cols["weight"]]
