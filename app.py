@@ -747,6 +747,9 @@ with tab_ei:
                 source_book = pd.ExcelFile(uploaded_file)
                 required_aliases = {
                     "hbl_source": ["Remark(Detail)", "Remark Detail", "Remark"],
+                    "booking_no": ["Booking No.", "Booking No", "Booking Number", "Booking#"],
+                    "pod_code": ["POD코드", "POD Code", "POD"],
+                    "actual_shipper": ["실화주", "Actual Shipper"],
                     "qty": ["Qty.", "PCS", "수량", "포장갯수", "Qty"],
                     "weight": ["Weight", "WGT(KG)", "WGT", "중량", "중량(KG)"],
                     "cbm": ["CFS-CBM", "CFS CBM", "CFS_CBM", "CBM", "VOL(CBM)", "VOL", "용적", "Measure"],
@@ -791,6 +794,9 @@ with tab_ei:
                     ]
                 display_names = {
                     "hbl_source": "Remark(Detail)/Remark",
+                    "booking_no": "Booking No.",
+                    "pod_code": "POD코드/POD Code",
+                    "actual_shipper": "실화주/Actual Shipper",
                     "qty": "Qty./PCS/수량",
                     "weight": "Weight/WGT(KG)",
                     "cbm": "CFS-CBM/CBM/VOL(CBM)",
@@ -836,6 +842,25 @@ with tab_ei:
                 match = re.search(r"BL\s*#\s*:?\s*(\d+)", str(value), flags=re.IGNORECASE)
                 return match.group(1) if match else ""
 
+            def extract_fixed_cbm(value):
+                if value is None or pd.isna(value):
+                    return None
+                match = re.search(
+                    r"고정\s*[:：-]?\s*(\d+(?:\.\d+)?)\s*CBM\b",
+                    str(value),
+                    flags=re.IGNORECASE
+                )
+                return float(match.group(1)) if match else None
+
+            def get_ei_contact(pod_value, shipper_value):
+                pod_code = str(pod_value).strip().upper() if pd.notna(pod_value) else ""
+                shipper = re.sub(r"\s+", "", str(shipper_value)) if pd.notna(shipper_value) else ""
+                if pod_code not in {"FRLEH", "NLRTM"}:
+                    return ""
+                if shipper in {"현대건설", "현대건설기계"}:
+                    return "HJ.Lee@Expeditors.com"
+                return "Yuri.You@expeditors.com"
+
             sheet_name, header_idx, ei_cols, ei_raw_df = find_ei_source_table(ei_file)
             data_df = ei_raw_df.iloc[header_idx + 1:].copy()
 
@@ -847,10 +872,17 @@ with tab_ei:
                     if requester not in europe_team_members:
                         continue
 
-                hbl = extract_ei_hbl(row.iloc[ei_cols["hbl_source"]])
+                remark_detail = row.iloc[ei_cols["hbl_source"]]
+                hbl = extract_ei_hbl(remark_detail)
+                booking_no = row.iloc[ei_cols["booking_no"]]
+                ei_contact = get_ei_contact(
+                    row.iloc[ei_cols["pod_code"]],
+                    row.iloc[ei_cols["actual_shipper"]]
+                )
                 qty = row.iloc[ei_cols["qty"]]
                 weight = row.iloc[ei_cols["weight"]]
-                cbm = row.iloc[ei_cols["cbm"]]
+                fixed_cbm = extract_fixed_cbm(remark_detail)
+                cbm = fixed_cbm if fixed_cbm is not None else row.iloc[ei_cols["cbm"]]
                 receive_date = row.iloc[ei_cols["receive_date"]]
                 receive_time = row.iloc[ei_cols["receive_time"]]
 
@@ -876,7 +908,8 @@ with tab_ei:
                     format_ei_date(receive_date),
                     format_ei_time(receive_time),
                     "N",
-                    "",
+                    ei_contact,
+                    booking_no,
                 ])
 
             if not output_rows:
@@ -888,7 +921,8 @@ with tab_ei:
 
             headers = [
                 "HBL", "PCS", "WGT(KG)", "VOL(CBM)",
-                "Receive Date", "Receive Time", "DG Shipment", "EI Contact"
+                "Receive Date", "Receive Time", "DG Shipment", "EI Contact",
+                "ECU BK#"
             ]
             header_fill = openpyxl.styles.PatternFill(
                 fill_type="solid",
@@ -915,10 +949,12 @@ with tab_ei:
                 output_ws.cell(row=row_idx, column=1).number_format = "@"
                 output_ws.cell(row=row_idx, column=5).number_format = "@"
                 output_ws.cell(row=row_idx, column=6).number_format = "h:mm"
+                output_ws.cell(row=row_idx, column=9).number_format = "@"
 
             ei_widths = {
                 "A": 10.875, "B": 8.75, "C": 12.875, "D": 14.5,
-                "E": 14.75, "F": 15.25, "G": 17.75, "H": 29.125
+                "E": 14.75, "F": 15.25, "G": 17.75, "H": 29.125,
+                "I": 16.0
             }
             for col_letter, width in ei_widths.items():
                 output_ws.column_dimensions[col_letter].width = width
