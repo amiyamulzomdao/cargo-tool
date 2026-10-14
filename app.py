@@ -933,18 +933,27 @@ with tab_ei:
             dg_font = Font(name="宋体", size=12)
             align_top_left = Alignment(horizontal="left", vertical="top")
             align_top = Alignment(vertical="top")
+            ei_thin_side = Side(border_style="thin", color="000000")
+            ei_all_border = Border(
+                left=ei_thin_side,
+                right=ei_thin_side,
+                top=ei_thin_side,
+                bottom=ei_thin_side
+            )
 
             for col_idx, header in enumerate(headers, start=1):
                 cell = output_ws.cell(row=1, column=col_idx, value=header)
                 cell.fill = header_fill
                 cell.font = header_font
                 cell.alignment = align_top
+                cell.border = ei_all_border
 
             for row_idx, values in enumerate(output_rows, start=2):
                 for col_idx, value in enumerate(values, start=1):
                     cell = output_ws.cell(row=row_idx, column=col_idx, value=value)
                     cell.font = dg_font if col_idx == 7 else data_font
                     cell.alignment = align_top_left if col_idx != 7 else align_top
+                    cell.border = ei_all_border
 
                 output_ws.cell(row=row_idx, column=1).number_format = "@"
                 output_ws.cell(row=row_idx, column=5).number_format = "@"
