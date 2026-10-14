@@ -23,7 +23,6 @@ def format_number(v):
         return t.rstrip('0').rstrip('.') if '.' in t else t
     except: return str(v)
 
-# 세션 스테이트를 활용하여 세션 당 동일 파일/카테고리 중복 기록 방지
 def log_uploaded_filename(fn, category="SR"):
     if "logged_files" not in st.session_state:
         st.session_state.logged_files = set()
@@ -41,7 +40,6 @@ def log_uploaded_filename(fn, category="SR"):
     with open(p, "a", encoding='utf-8') as f:
         f.write(entry)
 
-# ⭐ [CEVA 전용] 단위 포맷 함수 (BOX 복수형 BOXES 완벽 지원) ⭐
 def format_unit_ceva(unit, count):
     if not unit: return ""
     u = str(unit).upper().strip()
@@ -58,7 +56,6 @@ def format_unit_ceva(unit, count):
         return base + "S"
     return base
 
-# [CEVA 전용] 중량 포맷 함수
 def format_wgt_ceva(v):
     try:
         val = float(v)
@@ -68,7 +65,6 @@ def format_wgt_ceva(v):
     except:
         return str(v)
 
-# [IST CONSOL 전용] 날짜 포맷 함수 (예: 15-Jul)
 def format_date_ist(v):
     if pd.isna(v) or not v:
         return ""
@@ -82,7 +78,6 @@ def format_date_ist(v):
     except:
         return str(v).split(' ')[0]
 
-# [IST CONSOL 전용] 회사명 정제 파서
 def clean_company_name(text, is_pus=False, is_shipper=True):
     if not text or pd.isna(text) or not str(text).strip():
         return ""
@@ -193,7 +188,6 @@ def clean_company_name(text, is_pus=False, is_shipper=True):
     comp_name = comp_name.rstrip(', ').strip()
     return comp_name
 
-# [선적이력 최적화] 지연 로딩 & 캐싱 파서 함수
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_history_excel_cached(file_path):
     try:
@@ -240,12 +234,9 @@ POD_OPTIONS = [f"{country} ({code})" if code != "ALL" else "전체 (ALL)" for co
 st.set_page_config(page_title="Europe Docs tool (Cargo Tool 8)", layout="wide")
 st.title("🚢 Europe Docs tool")
 
-# 탭 생성
-tab1, tab_ceva, tab_ist, tab_history, tab2 = st.tabs(["SR 정정", "CEVA(LEH)", "IST CONSOL", "선적이력", "업로드 기록"])
+tab1, tab_ceva, tab_ist, tab_ei, tab_history, tab2 = st.tabs(["SR 정정", "CEVA(LEH)", "IST CONSOL", "EI 입고", "선적이력", "업로드 기록"])
 
-# ==========================================
 # TAB 1: SR 정정
-# ==========================================
 with tab1:
     col_up1, col_up2, col_opt = st.columns([1.0, 1.5, 0.8])
     with col_up1:
@@ -404,9 +395,7 @@ with tab1:
             st.text_area("결과창", result, height=800, label_visibility="collapsed")
         except Exception as e: st.error(f"오류 발생: {e}")
 
-# ==========================================
-# TAB 2: CEVA(LEH) (BOX 복수형 BOXES 처리 완료)
-# ==========================================
+# TAB 2: CEVA(LEH)
 with tab_ceva:
     col_ceva_up = st.columns([1])[0]
     with col_ceva_up:
@@ -422,22 +411,18 @@ with tab_ceva:
                 except: return ""
             
             sets = [
-                # [페이지 1] (2개 세트)
                 {"qty": (35,8), "unit": (35,14), "wgt": (36,8), "cbm": (37,8), "hc": (38,4), "mark": (36,16), "desc": (36,34)},
                 {"qty": (44,8), "unit": (44,14), "wgt": (45,8), "cbm": (46,8), "hc": (47,4), "mark": (45,16), "desc": (45,34)},
-                # [페이지 2] (5개 세트, 44행 + 14행 점프 = 58행 시작)
                 {"qty": (58,8), "unit": (58,14), "wgt": (59,8), "cbm": (60,8), "hc": (61,4), "mark": (59,16), "desc": (59,34)},
                 {"qty": (67,8), "unit": (67,14), "wgt": (68,8), "cbm": (69,8), "hc": (70,4), "mark": (68,16), "desc": (68,34)},
                 {"qty": (76,8), "unit": (76,14), "wgt": (77,8), "cbm": (78,8), "hc": (79,4), "mark": (77,16), "desc": (77,34)},
                 {"qty": (85,8), "unit": (85,14), "wgt": (86,8), "cbm": (87,8), "hc": (88,4), "mark": (86,16), "desc": (86,34)},
                 {"qty": (94,8), "unit": (94,14), "wgt": (95,8), "cbm": (96,8), "hc": (97,4), "mark": (95,16), "desc": (95,34)},
-                # [페이지 3] (5개 세트, 94행 + 14행 점프 = 108행 시작)
                 {"qty": (108,8), "unit": (108,14), "wgt": (109,8), "cbm": (110,8), "hc": (111,4), "mark": (109,16), "desc": (109,34)},
                 {"qty": (117,8), "unit": (117,14), "wgt": (118,8), "cbm": (119,8), "hc": (120,4), "mark": (118,16), "desc": (118,34)},
                 {"qty": (126,8), "unit": (126,14), "wgt": (127,8), "cbm": (128,8), "hc": (129,4), "mark": (127,16), "desc": (127,34)},
-                {"qty": (135,8), "unit": (135,14), "wgt": (136,8), "cbm": (137,8), "hc": (138,4), "mark": (136,16), "desc": (136,34)},
+                {"qty": (135,8), "unit": (135,14), "wgt": (136,8), "cbm": (136,8), "hc": (138,4), "mark": (136,16), "desc": (136,34)},
                 {"qty": (144,8), "unit": (144,14), "wgt": (145,8), "cbm": (146,8), "hc": (147,4), "mark": (145,16), "desc": (145,34)},
-                # [페이지 4] (여유분 세트, 144행 + 14행 점프 = 158행 시작)
                 {"qty": (158,8), "unit": (158,14), "wgt": (159,8), "cbm": (160,8), "hc": (161,4), "mark": (159,16), "desc": (159,34)},
                 {"qty": (167,8), "unit": (167,14), "wgt": (168,8), "cbm": (169,8), "hc": (170,4), "mark": (168,16), "desc": (168,34)},
                 {"qty": (176,8), "unit": (176,14), "wgt": (177,8), "cbm": (178,8), "hc": (179,4), "mark": (177,16), "desc": (177,34)}
@@ -469,9 +454,7 @@ with tab_ceva:
                 st.text_area("DESC 결과", "\n".join(desc_lines), height=600, label_visibility="collapsed")
         except Exception as e: st.error(f"오류 발생: {e}")
 
-# ==========================================
 # TAB 3: IST CONSOL
-# ==========================================
 with tab_ist:
     col_ist_up = st.columns([1.2, 1])[0]
     with col_ist_up:
@@ -723,14 +706,230 @@ with tab_ist:
         except Exception as e:
             st.error(f"IST 데이터 처리 중 오류 발생: {e}")
 
-# ==========================================
-# TAB 4: 선적이력 (Lazy Loading 적용 최적화)
-# ==========================================
+# TAB 4: EI 입고
+with tab_ei:
+    st.subheader("EI 입고")
+    st.write("입고 엑셀의 헤더명을 인식하여 OXP Receiving Report 형식으로 변환합니다.")
+
+    ei_file = st.file_uploader(
+        "입고 엑셀 파일 입력",
+        type=["xlsx"],
+        key="ei_receiving_input"
+    )
+
+    if ei_file:
+        try:
+            log_uploaded_filename(ei_file.name, "EI")
+
+            def normalize_ei_header(value):
+                if value is None or pd.isna(value):
+                    return ""
+                return re.sub(r"\\s+", "", str(value)).strip().casefold()
+
+            def find_ei_column(header_values, aliases):
+                normalized = [normalize_ei_header(v) for v in header_values]
+                for alias in aliases:
+                    alias_norm = normalize_ei_header(alias)
+                    for idx, value in enumerate(normalized):
+                        if value == alias_norm:
+                            return idx
+                return None
+
+            def find_ei_source_table(uploaded_file):
+                uploaded_file.seek(0)
+                source_book = pd.ExcelFile(uploaded_file)
+                required_aliases = {
+                    "hbl_source": ["Remark(Detail)", "Remark Detail", "Remark"],
+                    "qty": ["Qty.", "PCS", "수량", "포장갯수", "Qty"],
+                    "weight": ["Weight", "WGT(KG)", "WGT", "중량", "중량(KG)"],
+                    "cbm": ["CBM", "VOL(CBM)", "VOL", "용적", "Measure"],
+                    "receive_date": ["입고일자", "Receive Date", "입고일", "입고 날짜"],
+                    "receive_time": ["입고시간", "Receive Time", "입고 시각", "입고시각"],
+                }
+
+                best_match = None
+                for sheet_name in source_book.sheet_names:
+                    raw_df = pd.read_excel(
+                        source_book,
+                        sheet_name=sheet_name,
+                        header=None,
+                        dtype=object
+                    )
+                    scan_count = min(30, len(raw_df))
+                    for header_idx in range(scan_count):
+                        header_values = raw_df.iloc[header_idx].tolist()
+                        found = {
+                            key: find_ei_column(header_values, aliases)
+                            for key, aliases in required_aliases.items()
+                        }
+                        score = sum(idx is not None for idx in found.values())
+                        if best_match is None or score > best_match["score"]:
+                            best_match = {
+                                "score": score,
+                                "sheet_name": sheet_name,
+                                "header_idx": header_idx,
+                                "found": found,
+                                "raw_df": raw_df,
+                            }
+                        if score == len(required_aliases):
+                            return sheet_name, header_idx, found, raw_df
+
+                missing = []
+                if best_match:
+                    missing = [
+                        key for key, idx in best_match["found"].items()
+                        if idx is None
+                    ]
+                display_names = {
+                    "hbl_source": "Remark(Detail)/Remark",
+                    "qty": "Qty./PCS/수량",
+                    "weight": "Weight/WGT(KG)",
+                    "cbm": "CBM/VOL(CBM)",
+                    "receive_date": "입고일자/Receive Date",
+                    "receive_time": "입고시간/Receive Time",
+                }
+                missing_text = ", ".join(display_names[key] for key in missing)
+                raise ValueError(
+                    "필수 헤더를 모두 찾을 수 없습니다."
+                    + (f" 누락: {missing_text}" if missing_text else "")
+                )
+
+            def format_ei_date(value):
+                if value is None or pd.isna(value) or str(value).strip() == "":
+                    return ""
+                try:
+                    parsed = pd.to_datetime(value)
+                    return parsed.strftime("%Y-%m-%d")
+                except Exception:
+                    return str(value).strip()
+
+            def format_ei_time(value):
+                if value is None or pd.isna(value) or str(value).strip() == "":
+                    return ""
+                if isinstance(value, datetime):
+                    return value.strftime("%H:%M")
+                if hasattr(value, "strftime"):
+                    try:
+                        return value.strftime("%H:%M")
+                    except Exception:
+                        pass
+                text_value = str(value).strip()
+                try:
+                    parsed = pd.to_datetime(text_value)
+                    return parsed.strftime("%H:%M")
+                except Exception:
+                    return text_value
+
+            def extract_ei_hbl(value):
+                if value is None or pd.isna(value):
+                    return ""
+                match = re.search(r"BL\s*#\s*:?\s*(\d+)", str(value), flags=re.IGNORECASE)
+                return match.group(1) if match else ""
+
+            sheet_name, header_idx, ei_cols, ei_raw_df = find_ei_source_table(ei_file)
+            data_df = ei_raw_df.iloc[header_idx + 1:].copy()
+
+            output_rows = []
+            for _, row in data_df.iterrows():
+                hbl = extract_ei_hbl(row.iloc[ei_cols["hbl_source"]])
+                qty = row.iloc[ei_cols["qty"]]
+                weight = row.iloc[ei_cols["weight"]]
+                cbm = row.iloc[ei_cols["cbm"]]
+                receive_date = row.iloc[ei_cols["receive_date"]]
+                receive_time = row.iloc[ei_cols["receive_time"]]
+
+                cargo_values = [qty, weight, cbm]
+                has_cargo = any(
+                    pd.notna(v) and str(v).strip() not in ["", "nan"]
+                    for v in cargo_values
+                )
+                has_receiving = any(
+                    pd.notna(v) and str(v).strip() not in ["", "nan"]
+                    for v in [receive_date, receive_time]
+                )
+
+                # 총계행처럼 수량/중량만 있고 입고일시가 없는 행은 제외합니다.
+                if not (has_cargo and has_receiving):
+                    continue
+
+                output_rows.append([
+                    hbl,
+                    qty,
+                    weight,
+                    cbm,
+                    format_ei_date(receive_date),
+                    format_ei_time(receive_time),
+                    "N",
+                    "",
+                ])
+
+            if not output_rows:
+                raise ValueError("변환할 입고 데이터 행을 찾을 수 없습니다.")
+
+            output_wb = openpyxl.Workbook()
+            output_ws = output_wb.active
+            output_ws.title = "OXP Receiving Report"
+
+            headers = [
+                "HBL", "PCS", "WGT(KG)", "VOL(CBM)",
+                "Receive Date", "Receive Time", "DG Shipment", "EI Contact"
+            ]
+            header_fill = openpyxl.styles.PatternFill(
+                fill_type="solid",
+                fgColor="FF00B050"
+            )
+            header_font = Font(name="Times New Roman", size=12, bold=True)
+            data_font = Font(name="맑은 고딕", size=11)
+            dg_font = Font(name="宋体", size=12)
+            align_top_left = Alignment(horizontal="left", vertical="top")
+            align_top = Alignment(vertical="top")
+
+            for col_idx, header in enumerate(headers, start=1):
+                cell = output_ws.cell(row=1, column=col_idx, value=header)
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = align_top
+
+            for row_idx, values in enumerate(output_rows, start=2):
+                for col_idx, value in enumerate(values, start=1):
+                    cell = output_ws.cell(row=row_idx, column=col_idx, value=value)
+                    cell.font = dg_font if col_idx == 7 else data_font
+                    cell.alignment = align_top_left if col_idx != 7 else align_top
+
+                output_ws.cell(row=row_idx, column=1).number_format = "@"
+                output_ws.cell(row=row_idx, column=5).number_format = "@"
+                output_ws.cell(row=row_idx, column=6).number_format = "h:mm"
+
+            ei_widths = {
+                "A": 10.875, "B": 8.75, "C": 12.875, "D": 14.5,
+                "E": 14.75, "F": 15.25, "G": 17.75, "H": 29.125
+            }
+            for col_letter, width in ei_widths.items():
+                output_ws.column_dimensions[col_letter].width = width
+
+            ei_output = io.BytesIO()
+            output_wb.save(ei_output)
+            ei_output.seek(0)
+
+            st.success(
+                f"'{sheet_name}' 시트의 {header_idx + 1}행에서 헤더를 인식해 "
+                f"{len(output_rows)}건을 변환했습니다."
+            )
+            st.download_button(
+                label="💾 EI 입고 파일 다운로드",
+                data=ei_output,
+                file_name=f"EI_RECEIVING_REPORT_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+        except Exception as e:
+            st.error(f"EI 입고 파일 처리 중 오류 발생: {e}")
+
+# TAB 5: 선적이력
 with tab_history:
     col_pod, col_query, col_btn = st.columns([1, 1.8, 0.5])
     with col_pod:
         selected_pod_opt = st.selectbox("POD 선택", POD_OPTIONS, index=0)
-        
         if "ALL" in selected_pod_opt:
             pod_code = "ALL"
         else:
@@ -752,7 +951,6 @@ with tab_history:
 
         if "200899" in search_digits or "2008.99" in search_upper:
             history_warnings.append("⚠️ HS CODE 2008.99 면 seaweed(김) 도착지 검사로 선적안됨. 1212.21 사용가능")
-
         if "242400" in search_digits or "2424.00" in search_upper:
             history_warnings.append("⚠️ 유효하지 않은 HS CODE / HOUSEHOLD GOODS 는 9905.00 을 써주세요.")
         if "MAGNET" in search_upper or "자성" in search_upper:
@@ -842,9 +1040,7 @@ with tab_history:
     else:
         st.write("💡 HS CODE 또는 품목명을 입력 후 Enter를 누르거나 [🔍 검색] 버튼을 누르면 해당 POD의 진행 이력을 검색합니다.")
 
-# ==========================================
-# TAB 5: 업로드 기록
-# ==========================================
+# TAB 6: 업로드 기록
 with tab2:
     if os.path.exists("upload_log.txt"):
         with open("upload_log.txt", "r", encoding='utf-8') as f: 
