@@ -708,9 +708,6 @@ with tab_ist:
 
 # TAB 4: EI 입고
 with tab_ei:
-    st.subheader("EI 입고")
-    st.write("입고 엑셀의 헤더명을 인식하여 OXP Receiving Report 형식으로 변환합니다.")
-
     ei_file = st.file_uploader(
         "입고 엑셀 파일 입력",
         type=["xlsx"],
@@ -742,7 +739,7 @@ with tab_ei:
                     "hbl_source": ["Remark(Detail)", "Remark Detail", "Remark"],
                     "qty": ["Qty.", "PCS", "수량", "포장갯수", "Qty"],
                     "weight": ["Weight", "WGT(KG)", "WGT", "중량", "중량(KG)"],
-                    "cbm": ["CBM", "VOL(CBM)", "VOL", "용적", "Measure"],
+                    "cbm": ["CFS-CBM", "CFS CBM", "CFS_CBM", "CBM", "VOL(CBM)", "VOL", "용적", "Measure"],
                     "receive_date": ["입고일자", "Receive Date", "입고일", "입고 날짜"],
                     "receive_time": ["입고시간", "Receive Time", "입고 시각", "입고시각"],
                 }
@@ -784,7 +781,7 @@ with tab_ei:
                     "hbl_source": "Remark(Detail)/Remark",
                     "qty": "Qty./PCS/수량",
                     "weight": "Weight/WGT(KG)",
-                    "cbm": "CBM/VOL(CBM)",
+                    "cbm": "CFS-CBM/CBM/VOL(CBM)",
                     "receive_date": "입고일자/Receive Date",
                     "receive_time": "입고시간/Receive Time",
                 }
@@ -911,10 +908,6 @@ with tab_ei:
             output_wb.save(ei_output)
             ei_output.seek(0)
 
-            st.success(
-                f"'{sheet_name}' 시트의 {header_idx + 1}행에서 헤더를 인식해 "
-                f"{len(output_rows)}건을 변환했습니다."
-            )
             st.download_button(
                 label="💾 EI 입고 파일 다운로드",
                 data=ei_output,
