@@ -708,17 +708,21 @@ with tab_ist:
 
 # TAB 4: EI 입고
 with tab_ei:
-    europe_team_only = st.checkbox(
-        "유럽팀",
-        value=False,
-        key="ei_europe_team_only"
-    )
-
-    ei_file = st.file_uploader(
-        "입고 엑셀 파일 입력",
-        type=["xlsx"],
-        key="ei_receiving_input"
-    )
+    col_ei_upload, col_ei_option = st.columns([1.8, 0.7])
+    with col_ei_upload:
+        ei_file = st.file_uploader(
+            "입고 엑셀 파일 입력",
+            type=["xlsx"],
+            key="ei_receiving_input"
+        )
+    with col_ei_option:
+        st.write("")
+        st.write("")
+        europe_team_only = st.checkbox(
+            "유럽팀",
+            value=False,
+            key="ei_europe_team_only"
+        )
 
     if ei_file:
         try:
