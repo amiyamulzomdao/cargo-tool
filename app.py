@@ -857,9 +857,11 @@ with tab_ei:
                 shipper = re.sub(r"\s+", "", str(shipper_value)) if pd.notna(shipper_value) else ""
                 if pod_code not in {"FRLEH", "NLRTM"}:
                     return ""
-                if shipper in {"현대건설", "현대건설기계", "한국고무"}:
-                    return "HJ.Lee@Expeditors.com"
-                return "Yuri.You@expeditors.com"
+                if shipper in {"현대건설", "현대건설기계"}:
+                    return "Vincent.Seo@expeditors.com"
+                if shipper == "한국고무" or shipper.upper() == "PURITECH":
+                    return "Tom.Kim@expeditors.com"
+                return "Blake.Cho@expeditors.com"
 
             sheet_name, header_idx, ei_cols, ei_raw_df = find_ei_source_table(ei_file)
             data_df = ei_raw_df.iloc[header_idx + 1:].copy()
