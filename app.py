@@ -857,7 +857,7 @@ with tab_ei:
                 shipper = re.sub(r"\s+", "", str(shipper_value)) if pd.notna(shipper_value) else ""
                 if pod_code not in {"FRLEH", "NLRTM"}:
                     return ""
-                if shipper in {"현대건설", "현대건설기계"}:
+                if shipper in {"현대건설", "현대건설기계", "한국고무"}:
                     return "HJ.Lee@Expeditors.com"
                 return "Yuri.You@expeditors.com"
 
